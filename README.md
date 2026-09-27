@@ -15,6 +15,7 @@ It's one self-contained file (`index.html`), with no build step, server or datab
   - YouTube link: the video plays on the result.
   - Spotify link (track, album, playlist, episode): the Spotify player appears.
   - Any other link: a **Discover** button opens it.
+- **Karaoké:** a gallery of 81 karaoke videos with a search by artist or song title. Click a thumbnail to play it full-size in the app.
 - **Final screen:** a podium for the top 3, the full ranking, and a recap of every question showing how many players got it right.
 
 ## Adding questions
