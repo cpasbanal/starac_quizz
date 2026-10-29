@@ -55,6 +55,8 @@ Which city hosts the château?,Paris,Dammarie-lès-Lys,Lyon,Nice,B,Star Academy,
 
 ## Deploying to Vercel
 
+The app is live at https://staracquizz.vercel.app
+
 The site is a single static file, so no build settings are needed.
 
 ### Option A: Vercel CLI
