@@ -2,7 +2,7 @@
 
 A host-run quiz app for parties and team events, styled like a TV talent-show stage. One person runs the game on a laptop or big screen; players answer out loud or on paper, and the host records each player's answer.
 
-It's one self-contained file (`index.html`), with no build step, server or database. Players and questions are saved in the browser (localStorage) on the device that runs the game.
+It's a static site with no build step, server or database: plain HTML, CSS and JavaScript, with React loaded from the `vendor/` folder. Players and questions are saved in the browser (localStorage) on the device that runs the game.
 
 ## Features
 
@@ -57,7 +57,7 @@ Which city hosts the château?,Paris,Dammarie-lès-Lys,Lyon,Nice,B,Star Academy,
 
 The app is live at https://staracquizz.vercel.app
 
-The site is a single static file, so no build settings are needed.
+The site is plain static files, so no build settings are needed. Every push to `main` on GitHub redeploys it.
 
 ### Option A: Vercel CLI
 ```bash
@@ -86,16 +86,39 @@ Go to vercel.com/new and upload the folder that contains `index.html`.
 
 ## Project files
 
-| File | Purpose |
+| Path | Purpose |
 | --- | --- |
-| `index.html` | The whole app (bundled, self-contained) |
-| `README.md` | This file |
-| `.gitignore` | Ignores the local `.vercel` link folder |
+| `index.html` | Page shell: loads the styles, React and the app scripts |
+| `src/app.js` | The logic: state, game flow, scoring, saving, CSV import/export (`renderVals()` prepares what the screens show) |
+| `src/view.js` | The screens, written as HTML inside `` html`…` `` templates |
+| `src/karaoke.js` | The karaoké catalogue (one line per song: artist, title and YouTube ID, separated by `\|`) |
+| `src/lib/html.js` | Small helper that turns the `` html`…` `` templates into React elements (like JSX, without a build step) |
+| `styles/nocturne.css` | The Nocturne design system: color, type and spacing tokens, buttons, cards, forms |
+| `styles/app.css` | Stage animations (spotlights, twinkle, pop, shake) and helpers |
+| `styles/fonts.css`, `fonts/` | Inter, self-hosted |
+| `vendor/` | React 18.3.1 and ReactDOM (production builds) |
+| `design/` | The original Claude Design source the app was converted from (reference only) |
 
-`index.html` is a compiled bundle, so don't edit it by hand. Make changes in the design source, then export a new `index.html` to replace this one.
+### Working on it locally
+
+Any static server works, for example:
+
+```bash
+cd <this-folder>
+python3 -m http.server 8000
+```
+
+Then open http://localhost:8000. Edit a file and reload the page; there's nothing to compile.
+
+To publish, run `./update.sh "what changed"`: it commits everything and pushes, and Vercel redeploys.
+
+### Game options
+
+At the top of `src/app.js`, `CONFIG` holds two switches: `autoReveal` (reveal when the timer reaches zero) and `hideScores` (hide the leaderboard until the final screen).
 
 ## Host tips
 
 - Plug in the big screen and use full-screen browser mode (F11 / ⌃⌘F).
 - **Space** or **Enter** reveals the answer, then moves to the next question.
+- If the page is reloaded during a game, the game resumes where it was (a timed question restarts its countdown).
 - Data stays in the browser where you run the game. Clearing site data erases players and questions, so keep a **Back up** CSV somewhere safe.

@@ -1,0 +1,15 @@
+/* App-specific styles: stage animations and helpers. Colors, type and components come from nocturne.css. */
+html,body{margin:0;height:100%;background:var(--color-bg)}
+a{color:var(--color-accent)}a:hover{color:var(--color-accent-400)}
+@keyframes qpSwayL{0%{transform:rotate(-26deg)}100%{transform:rotate(-8deg)}}
+@keyframes qpSwayR{0%{transform:rotate(24deg)}100%{transform:rotate(6deg)}}
+@keyframes qpTwinkle{0%,100%{opacity:.35}50%{opacity:.9}}
+@keyframes qpPop{0%{transform:scale(1)}40%{transform:scale(1.045)}100%{transform:scale(1)}}
+@keyframes qpShake{0%,100%{transform:none}20%{transform:translateX(-6px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
+@keyframes qpFlash{0%{opacity:0}12%{opacity:1}100%{opacity:0}}
+@keyframes qpFloat{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:none}}
+@keyframes qpRise{0%{opacity:0;transform:translateY(24px)}100%{opacity:1;transform:none}}
+.qp-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Karaoké cards */
+[data-hover]:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent) !important; }
