@@ -328,7 +328,7 @@ ${v.karaView.map((k, kI) => html`
 <div key=${kI} style="position: relative; display: flex">
 <button type="button" onClick=${k.open} aria-label="Lancer ${k.title} de ${k.artist}" style="all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 8px; border-radius: var(--radius-md); padding: 6px; margin: -6px; flex-grow: 1; min-width: 0" data-hover>
 <div style="position: relative; aspect-ratio: 16 / 9; border-radius: var(--radius-md); overflow: hidden; background: linear-gradient(135deg, var(--color-accent-900), var(--color-neutral-900)); border: 1px solid var(--color-divider)">
-<img onError=${hideBrokenImage} src=${k.thumb} alt="" loading="lazy" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover" />
+${k.thumb ? html`<img onError=${hideBrokenImage} src=${k.thumb} alt="" loading="lazy" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover" />` : html`<span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 12px; text-align: center; font-size: 12px; color: var(--color-neutral-400)">Recherche karaoké sur YouTube</span>`}
 <span style="position: absolute; left: 8px; bottom: 8px; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--color-bg) 70%, transparent); border: 1px solid var(--color-accent); color: var(--color-accent-200)"><svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M3 1.5v9l7.5-4.5z"></path></svg></span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 2px">

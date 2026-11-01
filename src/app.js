@@ -558,7 +558,8 @@ class App extends React.Component {
     var favs = st.favorites || [];
     var showFavs = st.karaFilter === 'fav';
     var karaSource = showFavs ? favs : KARAOKE.map(function (k) {
-      return { key: 'k:' + k.ytId, title: k.title, artist: k.artist, link: 'https://www.youtube.com/watch?v=' + k.ytId };
+      // A song without a video ID opens a YouTube karaoké search instead (see open below).
+      return { key: 'k:' + (k.ytId || k.artist + '|' + k.title), title: k.title, artist: k.artist, link: k.ytId ? 'https://www.youtube.com/watch?v=' + k.ytId : '' };
     });
     var karaView = karaSource.filter(function (k) {
       return !karaQ || karaNorm(k.artist).indexOf(karaQ) >= 0 || karaNorm(k.title).indexOf(karaQ) >= 0;
