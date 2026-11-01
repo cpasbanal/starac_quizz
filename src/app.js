@@ -157,7 +157,7 @@ class App extends React.Component {
       roster: [], nextId: 1, newName: '',
       bank: [], nextQ: 1, hiddenShipped: [], gameSize: 10, timerSec: 0, search: '',
       form: this.blankForm('quiz'), gameCats: { quiz: 'all', paroles: 'all', blind: 'all' },
-      formMsg: '', formOk: true, panel: 'form', setMode: 'all', confirmDelete: null, confirmReplace: false,
+      formMsg: '', formOk: true, panel: 'form', setMode: 'all', confirmDelete: null, confirmReplace: false, confirmEmpty: false,
       csvText: '', importMsg: '', importOk: true, copied: false,
       tab: 'quiz', screen: 'home', gameMode: 'quiz',
       gameQs: [], gamePlayers: [], qIndex: 0, picks: {}, revealed: false, scores: {}, confirmQuit: false,
@@ -322,6 +322,13 @@ class App extends React.Component {
     var pl = added.length > 1 ? 's' : '';
     var msg = (replace ? 'Banque remplacée : ' : '') + added.length + ' question' + pl + (replace ? '' : ' ajoutée' + pl) + (res.skipped ? ' (' + res.skipped + ' ligne' + (res.skipped > 1 ? 's ignorées' : ' ignorée') + ' : vérifiez la colonne réponse ou le lien)' : '');
     this.setState({ bank: bank, nextQ: n, hiddenShipped: hidden, importMsg: msg, importOk: true, csvText: '', confirmReplace: false });
+  }
+
+  // Empties the bank saved on this device: imported, written and edited questions are deleted,
+  // deleted published questions come back. Only the published questions (data/questions.js) remain.
+  emptyBank() {
+    this.setState({ bank: mergeShipped([], []), hiddenShipped: [], nextQ: 1, confirmEmpty: false,
+      importMsg: 'Banque vidée : seules les questions publiées restent.', importOk: true });
   }
 
   csvCell(v) { v = String(v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
@@ -760,7 +767,7 @@ class App extends React.Component {
       });
     });
     var panelTabs = [['form', 'Écrire une question'], ['import', 'Importer'], ['export', 'Sauvegarder']].map(function (p) {
-      return { label: p[1], active: st.panel === p[0], pick: function () { self.setState({ panel: p[0], confirmReplace: false, copied: false }); } };
+      return { label: p[1], active: st.panel === p[0], pick: function () { self.setState({ panel: p[0], confirmReplace: false, confirmEmpty: false, copied: false }); } };
     });
     var exportText = st.tab === 'settings' && st.panel === 'export' ? this.exportCsv() : '';
 
@@ -1048,6 +1055,12 @@ class App extends React.Component {
         self.doImport(self.state.csvText, true);
       },
       replaceLabel: st.confirmReplace ? 'Sûr ? Tout remplacer' : 'Remplacer toute la banque',
+      emptyBank: function () {
+        if (!self.state.confirmEmpty) { self.setState({ confirmEmpty: true }); return; }
+        self.emptyBank();
+      },
+      emptyLabel: st.confirmEmpty ? 'Sûr ? Tout vider' : 'Vider la banque de cet appareil',
+      emptyStyle: st.confirmEmpty ? 'color: var(--color-neutral-100); background: var(--color-neutral-700); border-color: var(--color-neutral-500);' : '',
       replaceStyle: st.confirmReplace ? 'color: var(--color-neutral-100); background: var(--color-neutral-700); border-color: var(--color-neutral-500);' : '',
       hasImportMsg: !!st.importMsg,
       importMsg: st.importMsg,

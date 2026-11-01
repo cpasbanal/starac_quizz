@@ -255,6 +255,10 @@ ${v.hasImportMsg ? html`
 <button class="btn btn-primary" onClick=${v.importAppend} style="height: 44px; padding: 0 18px; font-size: 15px">Ajouter à la banque</button>
 <button class="btn btn-secondary" onClick=${v.importReplace} style="height: 44px; padding: 0 18px; font-size: 15px; ${v.replaceStyle}">${v.replaceLabel}</button>
 </div>
+<div style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-top: 12px; margin-top: 4px; border-top: 1px solid var(--color-divider)">
+<p style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-neutral-400)">Efface les questions importées, écrites ou modifiées sur cet appareil. Seules les questions publiées restent. Candidats et favoris karaoké sont gardés.</p>
+<button class="btn btn-secondary" onClick=${v.emptyBank} style="height: 44px; padding: 0 18px; font-size: 15px; ${v.emptyStyle}">${v.emptyLabel}</button>
+</div>
 </div>
 ` : null}
 

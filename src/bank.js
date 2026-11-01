@@ -78,19 +78,24 @@ function shippedQuestions() {
  * bank: questions saved on this device. hidden: ids of published questions deleted on this device.
  * - published questions not on the device yet are added;
  * - a published question the device never edited is refreshed from the file (its play count is kept);
- * - one edited on the device keeps the device's version.
+ * - one edited on the device keeps the device's version;
+ * - a question imported on the device that is now published (same mode and text) becomes the published one.
  */
 function mergeShipped(bank, hidden) {
   var shipped = shippedQuestions();
-  var byId = {};
-  shipped.forEach(function (q) { byId[q.id] = q; });
+  var byId = {}, byText = {};
+  var textKey = function (q) { return (q.mode || 'quiz') + '|' + String(q.q || '').trim().toLowerCase(); };
+  shipped.forEach(function (q) { byId[q.id] = q; if (q.q) byText[textKey(q)] = q; });
   var hide = {};
   (hidden || []).forEach(function (id) { hide[id] = true; });
   var out = [], have = {};
   (bank || []).forEach(function (q) {
     q = Object.assign({ mode: 'quiz', options: [], correct: -1, answer: '', category: '', link: '' }, q);
     if (q.shipped && !byId[q.id] && !q.edited) return;           // removed from the file
+    var pub = !q.shipped && byText[textKey(q)];
+    if (pub) q = Object.assign({}, pub, { played: q.played || 0 });
     if (byId[q.id] && !q.edited) q = Object.assign({}, byId[q.id], { played: q.played || 0 });
+    if (have[q.id]) return;                                        // the same published question twice
     have[q.id] = true;
     out.push(q);
   });
