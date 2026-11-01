@@ -1059,7 +1059,9 @@ class App extends React.Component {
       hasOptions: !marks,
       qText: q.q,
       lyric: lyric,
-      parolesSong: isParoles && st.revealed && q.answer ? q.answer : '',
+      // The song is named from the start: players know which song, they must find the words.
+      parolesTitle: isParoles ? songParts(q.answer).title : '',
+      parolesArtist: isParoles ? songParts(q.answer).artist : '',
       showFav: !!favItem && st.revealed,
       favLabel: qFav ? '★ Dans les favoris karaoké' : '☆ Favori karaoké',
       favPressed: qFav,

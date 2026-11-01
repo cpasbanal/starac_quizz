@@ -373,10 +373,10 @@ ${v.isQuizQ ? html`
 <h1 style="margin: 0; font-size: 42px; line-height: 1.15; text-wrap: balance; max-width: 28ch; text-shadow: 0 0 36px color-mix(in srgb, var(--color-accent) 40%, transparent)">${v.qText}</h1>
 ` : null}
 ${v.isParolesQ ? html`
+${v.parolesTitle ? html`<h2 style="margin: 0; font-size: 26px; line-height: 1.2; text-wrap: balance; max-width: 32ch">${v.parolesTitle}${v.parolesArtist ? html`<span style="font-weight: 400; color: var(--color-neutral-400)"> · ${v.parolesArtist}</span>` : null}</h2>` : null}
 <p style="margin: 0; font-size: 46px; line-height: 1.3; font-weight: 500; font-style: italic; text-wrap: balance; max-width: 26ch; text-shadow: 0 0 36px color-mix(in srgb, var(--color-accent) 40%, transparent)"><span aria-hidden="true" style="color: var(--color-accent-300)">« </span>${v.lyric.map((p, pI) => p.blank
   ? html`<span key=${pI} style="display: inline-block; min-width: 4ch; padding: 0 8px; margin: 0 4px; border-bottom: 3px solid var(--color-accent); color: var(--color-accent-200); font-style: normal; background: color-mix(in srgb, var(--color-accent) 14%, transparent); border-radius: 6px 6px 0 0; transition: color .4s, border-color .4s; ${p.style}">${p.text || ' '}</span>`
   : html`<span key=${pI}>${p.text}</span>`)}<span aria-hidden="true" style="color: var(--color-accent-300)"> »</span></p>
-${v.parolesSong ? html`<p style="margin: 0; font-size: 18px; color: var(--color-neutral-300); animation: qpFloat .5s ease-out .3s both">${v.parolesSong}</p>` : null}
 ` : null}
 ${v.isBlindQ ? html`
 <h1 style="margin: 0; font-size: 42px; line-height: 1.15; text-wrap: balance; max-width: 28ch; transition: color .4s; text-shadow: 0 0 36px color-mix(in srgb, var(--color-accent) 40%, transparent); ${v.blindTitleStyle}">${v.blindTitle}</h1>
