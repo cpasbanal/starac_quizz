@@ -435,16 +435,24 @@ ${v.rows.map((row, rowI) => html`
 <div key=${rowI} style="display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-surface) 60%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: background .3s; ${row.style}">
 ${row.canBuzz ? html`
 <button type="button" onClick=${row.buzz} aria-label=${row.buzzLabel} style="all: unset; cursor: pointer; flex-grow: 1; min-width: 0; min-height: 44px; display: flex; flex-direction: column; justify-content: center">
-<span style="font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${row.name}</span>
+<span style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><span style="font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${row.name}</span>${row.total ? html`<span style="flex-shrink: 0; font-size: 12px; color: var(--color-neutral-400); font-variant-numeric: tabular-nums">${row.total}</span>` : null}</span>
 <span style="font-size: 12px; ${row.resultStyle}">${row.result}</span>
 </button>
 ` : html`
 <div style="flex-grow: 1; min-width: 0; min-height: 44px; display: flex; flex-direction: column; justify-content: center">
-<span style="font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${row.name}</span>
+<span style="display: flex; align-items: baseline; gap: 8px; min-width: 0"><span style="font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${row.name}</span>${row.total ? html`<span style="flex-shrink: 0; font-size: 12px; color: var(--color-neutral-400); font-variant-numeric: tabular-nums">${row.total}</span>` : null}</span>
 <span style="font-size: 12px; ${row.resultStyle}">${row.result}</span>
 </div>
 `}
 ${row.hasBadge ? html`<span class="tag tag-accent" style="flex-shrink: 0; font-size: 14px; padding: 3px 10px">${row.badge}</span>` : null}
+${row.ptsChoices.length ? html`
+<div role="group" aria-label="Points de ${row.name}" style="display: flex; align-items: center; gap: 3px; flex-shrink: 0">
+<span style="font-size: 11px; color: var(--color-neutral-400); margin-right: 2px">pts</span>
+${row.ptsChoices.map((c, cI) => html`
+<button key=${cI} class="btn" onClick=${c.pick} aria-pressed=${c.pressed} aria-label=${c.aria} style="width: 30px; height: 36px; padding: 0; font-size: 15px; ${c.style}">${c.label}</button>
+`)}
+</div>
+` : null}
 <div style="display: flex; gap: 5px">
 ${row.buttons.map((b, bI) => html`
 <button key=${bI} class="btn" onClick=${b.pick} aria-pressed=${b.pressed} aria-label=${b.label} style="width: 44px; height: 44px; padding: 0; font-size: 17px; ${b.style}">${b.letter}</button>

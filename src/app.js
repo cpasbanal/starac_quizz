@@ -20,7 +20,7 @@ var STORAGE_KEY = 'quizparty:v2';
 var SAVED_KEYS = ['roster', 'nextId', 'bank', 'nextQ', 'hiddenShipped', 'gameSize', 'timerSec', 'gameCats', 'tab', 'panel', 'setMode',
   'parolesLevel', 'favorites',
   'screen', 'gameMode', 'gameQs', 'gamePlayers', 'qIndex', 'picks', 'revealed', 'scores', 'results', 'lastGain', 'qDeadline',
-  'buzz', 'blindPhase', 'blindMs'];
+  'buzz', 'pts', 'blindPhase', 'blindMs'];
 var GAME_TABS = { quiz: 1, paroles: 1, blind: 1 };
 var lastSaved = null;
 
@@ -155,7 +155,7 @@ class App extends React.Component {
       tab: 'quiz', screen: 'home', gameMode: 'quiz',
       gameQs: [], gamePlayers: [], qIndex: 0, picks: {}, revealed: false, scores: {}, confirmQuit: false,
       qDeadline: null, results: {}, lastGain: {},
-      parolesLevel: 'facile', buzz: {}, blindPhase: 'ready', blindMs: 0, blindAt: null,
+      parolesLevel: 'facile', buzz: {}, pts: {}, blindPhase: 'ready', blindMs: 0, blindAt: null,
       favorites: [], karaSearch: '', karaFilter: 'all', karaPlaying: null
     };
   }
@@ -392,7 +392,7 @@ class App extends React.Component {
       }),
       qIndex: 0, picks: {}, revealed: false, scores: scores, confirmQuit: false,
       qDeadline: mode === 'blind' ? null : this.deadline(), results: {}, lastGain: {},
-      buzz: {}, blindPhase: 'ready', blindMs: 0, blindAt: null
+      buzz: {}, pts: {}, blindPhase: 'ready', blindMs: 0, blindAt: null
     });
   }
 
@@ -405,7 +405,32 @@ class App extends React.Component {
   points(q, pid, st) {
     if (!this.isRight(q, st.picks[pid])) return 0;
     if (q.mode !== 'blind') return 1;
-    return st.buzz[pid] == null ? 0 : blindPoints(st.buzz[pid]);
+    return this.blindWorth(pid, st);
+  }
+
+  // What a blind-test answer is worth: the points the host set, else the buzz time, else the time the clip was stopped.
+  blindWorth(pid, st) {
+    var pts = st.pts || {}, buzz = st.buzz || {};
+    if (pts[pid] != null) return pts[pid];
+    return Math.max(1, blindPoints(buzz[pid] != null ? buzz[pid] : st.blindMs || 0));
+  }
+
+  // The host changes a mark or the points of the current question. After the reveal, the scores follow.
+  updateMarks(patch) {
+    var st = this.state, self = this;
+    if (st.revealed) {
+      var q = st.gameQs[st.qIndex], next = Object.assign({}, st, patch);
+      var scores = Object.assign({}, st.scores), gain = {}, hits = 0;
+      st.gamePlayers.forEach(function (p) {
+        var before = self.points(q, p.id, st), after = self.points(q, p.id, next);
+        scores[p.id] = (scores[p.id] || 0) - before + after;
+        if (after) { gain[p.id] = after; hits++; }
+      });
+      var results = Object.assign({}, st.results);
+      results[st.qIndex] = { hits: hits, of: st.gamePlayers.length };
+      Object.assign(patch, { scores: scores, lastGain: gain, results: results });
+    }
+    this.setState(patch);
   }
 
   doReveal() {
@@ -426,7 +451,7 @@ class App extends React.Component {
 
   doNext() {
     var st = this.state;
-    var reset = { picks: {}, revealed: false, lastGain: {}, buzz: {}, blindPhase: 'ready', blindMs: 0, blindAt: null };
+    var reset = { picks: {}, revealed: false, lastGain: {}, buzz: {}, pts: {}, blindPhase: 'ready', blindMs: 0, blindAt: null };
     if (st.qIndex + 1 >= st.gameQs.length) this.setState(Object.assign(reset, { screen: 'end', qDeadline: null }));
     else this.setState(Object.assign(reset, { qIndex: st.qIndex + 1, qDeadline: st.gameMode === 'blind' ? null : this.deadline() }));
   }
@@ -453,9 +478,9 @@ class App extends React.Component {
   buzzPlayer(pid) {
     var st = this.state;
     if (st.revealed || st.blindPhase !== 'playing') return;
-    var buzz = Object.assign({}, st.buzz), picks = Object.assign({}, st.picks);
-    if (buzz[pid] != null) { delete buzz[pid]; delete picks[pid]; } else buzz[pid] = this.blindElapsed();
-    this.setState({ buzz: buzz, picks: picks });
+    var buzz = Object.assign({}, st.buzz), picks = Object.assign({}, st.picks), pts = Object.assign({}, st.pts);
+    if (buzz[pid] != null) { delete buzz[pid]; delete picks[pid]; delete pts[pid]; } else buzz[pid] = this.blindElapsed();
+    this.setState({ buzz: buzz, picks: picks, pts: pts });
   }
 
   // ---------- Karaoké favorites ----------
@@ -741,30 +766,42 @@ class App extends React.Component {
       var ok = has && self.isRight(q, pick);
       var result, resultStyle = 'color: var(--color-neutral-500);', rowStyle = '';
       var hasBuzz = isBlind && buzz[p.id] != null;
-      var worth = hasBuzz ? blindPoints(buzz[p.id]) : 1;
+      var worth = isBlind ? self.blindWorth(p.id, st) : 1;
       if (st.revealed) {
         var delay = (0.3 + pi * 0.05).toFixed(2) + 's';
-        if (ok && (!isBlind || hasBuzz)) { result = (marks ? 'Trouvé' : 'Bonne réponse') + '  +' + worth; resultStyle = 'color: ' + GOOD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + GOOD + ' 16%, var(--color-surface)); box-shadow: inset 0 0 0 1px ' + GOOD + '; animation: qpPop .5s ease-out ' + delay + ' both;'; }
+        if (ok) { result = (marks ? 'Trouvé' : 'Bonne réponse') + '  +' + worth; resultStyle = 'color: ' + GOOD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + GOOD + ' 16%, var(--color-surface)); box-shadow: inset 0 0 0 1px ' + GOOD + '; animation: qpPop .5s ease-out ' + delay + ' both;'; }
         else if (has) { result = marks ? 'Raté' : 'Mauvaise réponse'; resultStyle = 'color: ' + BAD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + BAD + ' 12%, var(--color-surface)); box-shadow: inset 0 0 0 1px color-mix(in oklch, ' + BAD + ' 65%, transparent); animation: qpShake .45s ease-out ' + delay + ' both;'; }
-        else result = isBlind ? (hasBuzz ? 'Pas noté' : 'N\'a pas buzzé') : marks ? 'Pas noté' : 'Pas de réponse';
+        else result = isBlind && !hasBuzz ? 'N\'a pas buzzé' : marks ? 'Pas noté' : 'Pas de réponse';
       } else if (isBlind) {
         result = hasBuzz ? 'Buzz à ' + clock(buzz[p.id]) + (pick === true ? ' · Trouvé' : pick === false ? ' · Raté' : phase === 'stopped' ? ' · à vérifier' : '')
-          : phase === 'playing' ? 'Touchez pour buzzer' : phase === 'ready' ? 'Attend le Play' : 'N\'a pas buzzé';
+          : phase === 'playing' ? 'Touchez pour buzzer' : phase === 'ready' ? 'Attend le Play' : pick === true ? 'Trouvé (sans buzz)' : pick === false ? 'Raté' : 'N\'a pas buzzé';
         if (hasBuzz) { resultStyle = 'color: var(--color-accent-200);'; rowStyle = 'box-shadow: inset 0 0 0 1px var(--color-accent-700); background: var(--color-accent-900);'; }
       } else result = marks ? (pick === true ? 'Trouvé' : pick === false ? 'Raté' : 'À noter…') : (has ? 'A répondu' : 'En attente…');
+      // Marks (✓ / ✗) can still be corrected after the reveal; quiz answers can't.
       var setPick = function (val) {
-        if (self.state.revealed) return;
+        if (self.state.revealed && !marks) return;
         var np = Object.assign({}, self.state.picks);
         if (np[p.id] === val) delete np[p.id]; else np[p.id] = val;
-        self.setState({ picks: np });
+        self.updateMarks({ picks: np });
       };
+      var setPts = function (n) {
+        var np = Object.assign({}, self.state.pts);
+        np[p.id] = n;
+        self.updateMarks({ pts: np });
+      };
+      // Blind test, once stopped: every player can be marked (a buzz the host tapped too late included),
+      // and a right answer gets a 4 / 3 / 2 / 1 choice to correct its points.
+      var ptsChoices = isBlind && pick === true && (st.revealed || phase === 'stopped') ? [4, 3, 2, 1].map(function (n) {
+        var on = worth === n;
+        return { label: String(n), aria: p.name + ' : ' + ptsLabel(n), pressed: on, pick: function () { setPts(n); },
+          style: on ? 'border-color: ' + GOOD + '; color: ' + GOOD_L + '; background: color-mix(in oklch, ' + GOOD + ' 22%, var(--color-surface));' : OFF };
+      }) : [];
       var buttons;
-      if (isBlind && (!hasBuzz || phase === 'playing')) buttons = [];
+      if (isBlind && !st.revealed && phase !== 'stopped') buttons = [];
       else if (marks) {
         buttons = [[true, '✓', 'a trouvé'], [false, '✗', 'n\'a pas trouvé']].map(function (b) {
-          var picked = pick === b[0], style;
-          if (!st.revealed) style = picked ? (b[0] ? 'border-color: ' + GOOD + '; color: var(--color-bg); background: ' + GOOD + ';' : 'border-color: ' + BAD + '; color: ' + BAD_L + '; background: color-mix(in oklch, ' + BAD + ' 30%, var(--color-surface));') : OFF;
-          else style = picked ? (b[0] ? 'border-color: ' + GOOD + '; color: var(--color-bg); background: ' + GOOD + ';' : 'border-color: ' + BAD + '; color: ' + BAD_L + '; background: color-mix(in oklch, ' + BAD + ' 30%, var(--color-surface));') : OFF + ' opacity: 0.3;';
+          var picked = pick === b[0];
+          var style = picked ? (b[0] ? 'border-color: ' + GOOD + '; color: var(--color-bg); background: ' + GOOD + ';' : 'border-color: ' + BAD + '; color: ' + BAD_L + '; background: color-mix(in oklch, ' + BAD + ' 30%, var(--color-surface));') : OFF + (st.revealed ? ' opacity: 0.45;' : '');
           return { letter: b[1], label: p.name + ' ' + b[2], pressed: picked, style: style + ' font-size: 20px;', pick: function () { setPick(b[0]); } };
         });
       } else {
@@ -783,7 +820,9 @@ class App extends React.Component {
         name: p.name, result: result, resultStyle: resultStyle, style: rowStyle + (canBuzz ? ' cursor: pointer;' : ''), buttons: buttons,
         canBuzz: canBuzz, buzzLabel: hasBuzz ? 'Annuler le buzz de ' + p.name : p.name + ' buzze',
         buzz: function () { self.buzzPlayer(p.id); },
-        hasBadge: hasBuzz && !st.revealed, badge: ptsLabel(worth)
+        ptsChoices: ptsChoices,
+        hasBadge: hasBuzz && !st.revealed && !ptsChoices.length, badge: ptsLabel(worth),
+        total: hideScores ? '' : ptsLabel(st.scores[p.id] || 0)
       };
     });
     var isLast = st.qIndex + 1 >= gq.length;

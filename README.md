@@ -14,7 +14,8 @@ It's a static site with no build step, server or database: plain HTML, CSS and J
     The reveal shows the whole line, and the song can be added to the karaoké favorites.
   - **Blind test:** a YouTube or Spotify clip plays with the title and video hidden. The clock starts at 0 when the host clicks **Play**.
     Tapping a player's name when they buzz gives them the points of that moment: 4 (0–15 s), 3 (15–30 s), 2 (30–45 s), 1 (45–60 s).
-    **Stop · vérifier** pauses the clip; the host marks each buzz ✓ or ✗ (or resumes listening), then **Lumière !** reveals the song and counts the points.
+    **Stop · vérifier** pauses the clip; the host marks each player ✓ or ✗ (or resumes listening), then **Lumière !** reveals the song and counts the points.
+    A right answer shows a 4 / 3 / 2 / 1 choice to correct its points (for a buzz tapped too late, or not tapped at all); marks and points can still be corrected after the reveal, and the scores follow.
     Spotify plays full tracks only when the browser is logged in to Spotify; otherwise the embed plays a 30-second preview.
 - **Contestants:** add players or teams once. They're remembered, and you tap to include or skip them each game.
 - **Question bank:** write questions with 2–6 answers, an optional **category** and an optional **link**. Search, edit or delete them.
