@@ -136,6 +136,13 @@ function parolesParts(q, level) {
   return out;
 }
 
+// The Spotify page of a song: its track when the karaoké catalogue has it, else a Spotify search.
+function spotifyHref(title, artist) {
+  var t = karaNorm(title), a = karaNorm(artist);
+  var k = KARAOKE.filter(function (k) { return k.spotifyId && karaNorm(k.title) === t && (a.indexOf(karaNorm(k.artist)) >= 0 || karaNorm(k.artist).indexOf(a) >= 0); })[0];
+  return k ? 'https://open.spotify.com/track/' + k.spotifyId : 'https://open.spotify.com/search/' + encodeURIComponent(title + ' ' + artist);
+}
+
 // "Tourner dans le vide, Indila" → { title: 'Tourner dans le vide', artist: 'Indila' }
 function songParts(s) {
   s = String(s || '').trim();
@@ -598,7 +605,10 @@ class App extends React.Component {
           if (yt) { self.setState({ karaPlaying: { title: k.title, artist: k.artist, ytId: yt } }); return; }
           var href = m ? m.href : 'https://www.youtube.com/results?search_query=' + encodeURIComponent(k.title + ' ' + k.artist + ' karaoké');
           window.open(href, '_blank', 'noopener');
-        }
+        },
+        // The same song with its lyrics: a YouTube lyrics video, or Spotify (which shows the lyrics as it plays).
+        lyricsHref: 'https://www.youtube.com/results?search_query=' + encodeURIComponent(k.title + ' ' + k.artist + ' paroles'),
+        spotifyHref: spotifyHref(k.title, k.artist)
       };
     });
     var karaNow = st.karaPlaying && st.karaPlaying.ytId ? st.karaPlaying : null;

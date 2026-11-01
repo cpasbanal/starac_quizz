@@ -325,7 +325,7 @@ ${v.karaNoFavs ? html`
 ` : null}
 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px 16px; padding-bottom: 8px">
 ${v.karaView.map((k, kI) => html`
-<div key=${kI} style="position: relative; display: flex">
+<div key=${kI} style="position: relative; display: flex; flex-direction: column; gap: 10px">
 <button type="button" onClick=${k.open} aria-label="Lancer ${k.title} de ${k.artist}" style="all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 8px; border-radius: var(--radius-md); padding: 6px; margin: -6px; flex-grow: 1; min-width: 0" data-hover>
 <div style="position: relative; aspect-ratio: 16 / 9; border-radius: var(--radius-md); overflow: hidden; background: linear-gradient(135deg, var(--color-accent-900), var(--color-neutral-900)); border: 1px solid var(--color-divider)">
 ${k.thumb ? html`<img onError=${hideBrokenImage} src=${k.thumb} alt="" loading="lazy" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover" />` : html`<span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 12px; text-align: center; font-size: 12px; color: var(--color-neutral-400)">Recherche karaoké sur YouTube</span>`}
@@ -336,6 +336,11 @@ ${k.thumb ? html`<img onError=${hideBrokenImage} src=${k.thumb} alt="" loading="
 <div style="font-size: 13px; color: var(--color-neutral-400)">${k.artist}</div>
 </div>
 </button>
+<div role="group" aria-label="Version de ${k.title}" style="display: flex; gap: 6px">
+<button type="button" class="btn btn-secondary" onClick=${k.open} title="Version karaoké" style="flex: 1; height: 30px; padding: 0 8px; font-size: 12px">Karaoké</button>
+<a class="btn btn-ghost" href=${k.lyricsHref} target="_blank" rel="noopener" title="Vidéo YouTube avec les paroles (nouvel onglet)" style="flex: 1; height: 30px; padding: 0 8px; font-size: 12px; border: 1px solid var(--color-divider)">Paroles</a>
+<a class="btn btn-ghost" href=${k.spotifyHref} target="_blank" rel="noopener" title="Ouvrir dans Spotify, qui affiche les paroles (nouvel onglet)" style="flex: 1; height: 30px; padding: 0 8px; font-size: 12px; border: 1px solid var(--color-divider)">Spotify</a>
+</div>
 <button type="button" class="btn" onClick=${k.toggleFav} aria-pressed=${k.fav} aria-label=${k.favLabel} title=${k.favLabel} style="position: absolute; top: 6px; right: 6px; width: 34px; height: 34px; padding: 0; font-size: 18px; border-radius: 50%; background: color-mix(in srgb, var(--color-bg) 72%, transparent); border: 1px solid; ${k.favStyle}">${k.fav ? '★' : '☆'}</button>
 </div>
 `)}
