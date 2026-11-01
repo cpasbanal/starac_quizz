@@ -12,7 +12,7 @@ N°,Titre,Artiste,Clip vidéo,Explicite,Karaoké (catalogue de l'app),Lien Spoti
 11,Santa Maria,RIDSA,Oui,,,,,paroles/ridsa_santa-maria.txt
 12,Au bord de la mer,Chiloo,Oui,,,,,paroles/chiloo_au-bord-de-la-mer.txt
 13,Tombé,M. Pokora,Oui,,,,,paroles/m-pokora_tombe.txt
-14,Toi et moi,César et les Romains,,,,,,Non trouvées
+14,Toi et moi,César et les Romains,,,,,,paroles/cesar-et-les-romains_toi-et-moi.txt
 15,Me Enamore,RIDSA,Oui,,,,,paroles/ridsa_me-enamore.txt
 16,Adieu,Jérémy Frerot,Oui,,,,,paroles/jeremy-frerot_adieu.txt
 17,Tout a changé (Rien n'a changé),Helena,Oui,,https://www.youtube.com/watch?v=80Af7miutk8,,,paroles/helena_tout-a-change-rien-n-a-change.txt
@@ -120,28 +120,25 @@ N°,Titre,Artiste,Clip vidéo,Explicite,Karaoké (catalogue de l'app),Lien Spoti
 119,Azizam,Ed Sheeran,,,,https://open.spotify.com/track/0GRc3eGTg8HBdWLRGYgqIc,,paroles/ed-sheeran_azizam.txt
 120,I Gotta Feeling,Black Eyed Peas,,,,https://open.spotify.com/track/4kLLWz7srcuLKA7Et40PQR,,paroles/black-eyed-peas_i-gotta-feeling.txt
 121,MAMIII,"Becky G, KAROL G",,Oui,,https://open.spotify.com/track/1ri9ZUkBJVFUdgwzCnfcYs,,paroles/becky-g-karol-g_mamiii.txt
-122,Chocobodi,A-Star,,,,https://open.spotify.com/track/49jPUBICRbQMzLwelA952z,,Non trouvées
-123,Blinding Lights,The Weeknd,,,,https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b,,paroles/the-weeknd_blinding-lights.txt
-124,Don't You Worry,"Black Eyed Peas, Shakira, David Guetta",,,,https://open.spotify.com/track/4UyVCLbNG8yhrqbzeSmdho,,paroles/black-eyed-peas-shakira-david-guetta_don-t-you-worry.txt
-125,Golden,"HUNTR/X, EJAE, AUDREY NUNA, REI AMI, KPop Demon Hunters Cast",,,,https://open.spotify.com/track/1CPZ5BxNNd0n0nF4Orb9JS,,paroles/huntr-x-ejae-audrey-nuna-rei-ami-kpop-demon-hunters-cast_golden.txt
-126,Ma faute à toi,La Rue Kétanou,,,,https://open.spotify.com/track/0BJiITBa2wpzagOlqulViS,,paroles/la-rue-ketanou_ma-faute-a-toi.txt
-127,Les hommes que j'aime,La Rue Kétanou,,,,https://open.spotify.com/track/7ebyGGBvIus0ZgdbzcXweL,,paroles/la-rue-ketanou_les-hommes-que-j-aime.txt
-128,Le capitaine de la barrique,La Rue Kétanou,,,,https://open.spotify.com/track/68Mw9GeJ5pZHWKqeGtcIMu,,paroles/la-rue-ketanou_le-capitaine-de-la-barrique.txt
-129,Tu parles trop,La Rue Kétanou,,,,https://open.spotify.com/track/5DLqmMZvMaJe9FbuHkd9RF,,paroles/la-rue-ketanou_tu-parles-trop.txt
-130,Bon ben super,Laura Laune,,,,https://open.spotify.com/track/3BFDjAN6pt0JVkmEPfazlW,,Non trouvées
-131,Allez les bleus,Moussier Tombola,,,,https://open.spotify.com/track/7xKBIaskU1vaDssOaPLrnn,,Non trouvées
-132,Les coups,Nicolas Berton,,,,https://open.spotify.com/track/01lhCb2oWyU3YgW6bYSMlS,,Non trouvées
-133,Mets Les Watts Cousin !,Oai Star,,,,https://open.spotify.com/track/7CaD6hfxDa9dvyFsZbXogH,,paroles/oai-star_mets-les-watts-cousin.txt
-134,Le café,Oldelaf et Monsieur D.,,,,https://open.spotify.com/track/1DdYVh9hQw7VXOkDgxHEQk,,paroles/oldelaf-et-monsieur-d_le-cafe.txt
-135,Star des étoiles,SamSam,,,,https://open.spotify.com/track/3vra7CAplzDqrSdEjGPPsY,,Non trouvées
-136,P'tit chat,Les Ogres De Barback,,,,https://open.spotify.com/track/2GOvLFryGdHT2hyfz8beqN,,Non trouvées
-137,Balance ton quoi,Angèle,,,,https://open.spotify.com/track/49aU6H9CUaaJjj4utUrCc0,,paroles/angele_balance-ton-quoi.txt
-138,Dernière danse,Indila,,,,https://open.spotify.com/track/5hZxVNkurWP4OFtgi4YU8L,,paroles/indila_derniere-danse.txt
-139,Il est où le bonheur,Christophe Maé,,,,https://open.spotify.com/track/6I2TvYPl1DqOUWoiToevVW,,paroles/christophe-mae_il-est-ou-le-bonheur.txt
-140,Formidable,Stromae,,Oui,,https://open.spotify.com/track/0OfGzv9JI8olbLnp5rePCj,,paroles/stromae_formidable.txt
-141,Je veux,Zaz,,,,https://open.spotify.com/track/62HDkRF4qqi3kShAWXi3U6,,paroles/zaz_je-veux.txt
-142,J'aimerais trop (feat. SAP),Keen'V,,,,https://open.spotify.com/track/1ktX9ivFmkY736EqsYaMOu,,paroles/keen-v_j-aimerais-trop-feat-sap.txt
-143,Happy,Pharrell Williams,,,,https://open.spotify.com/track/5b88tNINg4Q4nrRbrCXUmg,,paroles/pharrell-williams_happy.txt
-144,"Libérée, délivrée (La Reine des neiges)",Anaïs Delva,,,,https://open.spotify.com/track/3v7I0HGUhg7Lx8QgtoJLqM,,paroles/anais-delva_liberee-delivree-la-reine-des-neiges.txt
-145,Les Champs-Élysées,Joe Dassin,,,,https://open.spotify.com/track/4VWbPQUPvLes814r6T11Jz,,paroles/joe-dassin_les-champs-elysees.txt
-146,Santiano,Hugues Aufray,,,,https://open.spotify.com/track/07HjFm537AehXjItEDvoDY,,paroles/hugues-aufray_santiano.txt
+122,Blinding Lights,The Weeknd,,,,https://open.spotify.com/track/0VjIjW4GlUZAMYd2vXMi3b,,paroles/the-weeknd_blinding-lights.txt
+123,Don't You Worry,"Black Eyed Peas, Shakira, David Guetta",,,,https://open.spotify.com/track/4UyVCLbNG8yhrqbzeSmdho,,paroles/black-eyed-peas-shakira-david-guetta_don-t-you-worry.txt
+124,Golden,"HUNTR/X, EJAE, AUDREY NUNA, REI AMI, KPop Demon Hunters Cast",,,,https://open.spotify.com/track/1CPZ5BxNNd0n0nF4Orb9JS,,paroles/huntr-x-ejae-audrey-nuna-rei-ami-kpop-demon-hunters-cast_golden.txt
+125,Ma faute à toi,La Rue Kétanou,,,,https://open.spotify.com/track/0BJiITBa2wpzagOlqulViS,,paroles/la-rue-ketanou_ma-faute-a-toi.txt
+126,Les hommes que j'aime,La Rue Kétanou,,,,https://open.spotify.com/track/7ebyGGBvIus0ZgdbzcXweL,,paroles/la-rue-ketanou_les-hommes-que-j-aime.txt
+127,Le capitaine de la barrique,La Rue Kétanou,,,,https://open.spotify.com/track/68Mw9GeJ5pZHWKqeGtcIMu,,paroles/la-rue-ketanou_le-capitaine-de-la-barrique.txt
+128,Tu parles trop,La Rue Kétanou,,,,https://open.spotify.com/track/5DLqmMZvMaJe9FbuHkd9RF,,paroles/la-rue-ketanou_tu-parles-trop.txt
+129,Allez les bleus,Moussier Tombola,,,,https://open.spotify.com/track/7xKBIaskU1vaDssOaPLrnn,,paroles/moussier-tombola_allez-les-bleus.txt
+130,Les coups,Nicolas Berton,,,,https://open.spotify.com/track/01lhCb2oWyU3YgW6bYSMlS,,Non trouvées
+131,Mets Les Watts Cousin !,Oai Star,,,,https://open.spotify.com/track/7CaD6hfxDa9dvyFsZbXogH,,paroles/oai-star_mets-les-watts-cousin.txt
+132,Le café,Oldelaf et Monsieur D.,,,,https://open.spotify.com/track/1DdYVh9hQw7VXOkDgxHEQk,,paroles/oldelaf-et-monsieur-d_le-cafe.txt
+133,P'tit chat,Les Ogres De Barback,,,,https://open.spotify.com/track/2GOvLFryGdHT2hyfz8beqN,,paroles/les-ogres-de-barback_p-tit-chat.txt
+134,Balance ton quoi,Angèle,,,,https://open.spotify.com/track/49aU6H9CUaaJjj4utUrCc0,,paroles/angele_balance-ton-quoi.txt
+135,Dernière danse,Indila,,,,https://open.spotify.com/track/5hZxVNkurWP4OFtgi4YU8L,,paroles/indila_derniere-danse.txt
+136,Il est où le bonheur,Christophe Maé,,,,https://open.spotify.com/track/6I2TvYPl1DqOUWoiToevVW,,paroles/christophe-mae_il-est-ou-le-bonheur.txt
+137,Formidable,Stromae,,Oui,,https://open.spotify.com/track/0OfGzv9JI8olbLnp5rePCj,,paroles/stromae_formidable.txt
+138,Je veux,Zaz,,,,https://open.spotify.com/track/62HDkRF4qqi3kShAWXi3U6,,paroles/zaz_je-veux.txt
+139,J'aimerais trop (feat. SAP),Keen'V,,,,https://open.spotify.com/track/1ktX9ivFmkY736EqsYaMOu,,paroles/keen-v_j-aimerais-trop-feat-sap.txt
+140,Happy,Pharrell Williams,,,,https://open.spotify.com/track/5b88tNINg4Q4nrRbrCXUmg,,paroles/pharrell-williams_happy.txt
+141,"Libérée, délivrée (La Reine des neiges)",Anaïs Delva,,,,https://open.spotify.com/track/3v7I0HGUhg7Lx8QgtoJLqM,,paroles/anais-delva_liberee-delivree-la-reine-des-neiges.txt
+142,Les Champs-Élysées,Joe Dassin,,,,https://open.spotify.com/track/4VWbPQUPvLes814r6T11Jz,,paroles/joe-dassin_les-champs-elysees.txt
+143,Santiano,Hugues Aufray,,,,https://open.spotify.com/track/07HjFm537AehXjItEDvoDY,,paroles/hugues-aufray_santiano.txt

@@ -2,7 +2,6 @@
 // To add a song, copy the 11-character ID from its YouTube link (…watch?v=XXXXXXXXXXX).
 // A song with no ID ("Artiste|Titre|") opens a YouTube karaoké search instead of playing in the app.
 var KARAOKE_RAW = [
-  "A-Star|Chocobodi|",
   "Aldebert|J'ai 10 ans|pCgC_za5b60",
   "Aldebert|Pour louper l'école|kbKX6T5n5AI",
   "Aldebert|Poussez-vous les moches !|Jz4VDRSGTxk",
@@ -71,7 +70,6 @@ var KARAOKE_RAW = [
   "La Rue Kétanou|Les mots|inkYYdUGOS0",
   "La Rue Kétanou|Ma faute à toi|",
   "La Rue Kétanou|Tu parles trop|NbJzget37uE",
-  "Laura Laune|Bon ben super|0y5dVqwdk7c",
   "Les Ogres De Barback|P'tit chat|",
   "Linh|Je pense à vous|pw_vMcA-L7U",
   "Louane|Secret|t_OMQKCuufY",
@@ -107,7 +105,6 @@ var KARAOKE_RAW = [
   "RIDSA|Nous Deux|7Av4Xl1XfYo",
   "RIDSA|Pardon|1V6UX3KKMdY",
   "RIDSA|Santa Maria|vVgzuXxMlXo",
-  "SamSam|Star des étoiles|",
   "SANTA|Recommence-moi|HVAV2-Ochc4",
   "Sheryfa Luna|Il avait les mots|PMligTQXLf0",
   "Sinsémilia|Tout le bonheur du monde|LxpJ4rt4gaI",
