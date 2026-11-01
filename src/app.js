@@ -247,7 +247,7 @@ class App extends React.Component {
           else if (/^(reponse|answer|bonne reponse|solution)$/.test(n)) cols.ans = h;
           else if (/^(category|categorie|theme)$/.test(n)) cols.cat = h;
           else if (/^(link|url|lien|media)$/.test(n)) cols.link = h;
-          else if (/^(mode|type|jeu)$/.test(n)) cols.mode = h;
+          else if (/^(mode|type|jeu)$/.test(n) && cols.mode == null) cols.mode = h;   // the paroles template has both Mode and Type (Refrain / Couplet)
           else if (/^(chanson|song|titre)$/.test(n)) cols.song = h;
         });
         continue;
@@ -383,6 +383,18 @@ class App extends React.Component {
           // Easy needs endings to choose from: a song written without them is played at the medium level.
           g.level = level === 'facile' && g.options.length < 2 ? 'moyen' : level;
           if (g.level === 'facile') {
+            // Wrong answers written as single words: only the last word of the line is hidden,
+            // and the choices are that word and the wrong words.
+            var wrongWords = g.options.filter(function (o, i) { return i !== g.correct; });
+            if (wrongWords.every(function (o) { return !/\s/.test(o); })) {
+              var t = fullLyric(g).match(/^(.*?)([\s.,!?;:…»")]*)$/);   // the closing punctuation stays visible
+              var m = t[1].match(/^(.*\s)?([«"'(]*)(\S+)$/);
+              if (m && m[1]) {
+                g.q = m[1] + m[2] + '___' + t[2];
+                g.options = [m[3]].concat(wrongWords);
+                g.correct = 0;
+              }
+            }
             var right = g.options[g.correct];
             g.options = g.options.map(function (o) { return { o: o, r: Math.random() }; }).sort(function (a, b) { return a.r - b.r; }).map(function (x) { return x.o; });
             g.correct = g.options.indexOf(right);
@@ -492,9 +504,22 @@ class App extends React.Component {
     this.setState({ favorites: this.isFav(item.key) ? favs.filter(function (f) { return f.key !== item.key; }) : favs.concat([item]) });
   }
 
-  // A paroles question → its karaoké favorite.
+  // A song of the karaoké catalogue → its favorite.
+  karaItem(k) {
+    // A song without a video ID opens a YouTube karaoké search instead (see open in the karaoké view).
+    return { key: 'k:' + (k.ytId || k.artist + '|' + k.title), title: k.title, artist: k.artist, link: k.ytId ? 'https://www.youtube.com/watch?v=' + k.ytId : '' };
+  }
+
+  // A paroles or blind-test question → its karaoké favorite.
   favFromQuestion(q) {
     var s = songParts(q.answer);
+    if (q.mode === 'blind') {
+      // The song of the catalogue when it's there (same star in both places), else a karaoké search for it:
+      // the blind-test link is the original song, often on Spotify, not a karaoké video.
+      var t = karaNorm(s.title);
+      var k = KARAOKE.filter(function (k) { return karaNorm(k.title) === t && karaNorm(s.artist).indexOf(karaNorm(k.artist)) >= 0; })[0];
+      return k ? this.karaItem(k) : { key: 'b:' + karaNorm(q.answer), title: s.title, artist: s.artist, link: '' };
+    }
     return { key: 'q:' + q.id, title: s.title || fullLyric(q), artist: s.artist, link: q.link || '' };
   }
 
@@ -557,10 +582,7 @@ class App extends React.Component {
     var karaQ = karaNorm(st.karaSearch.trim());
     var favs = st.favorites || [];
     var showFavs = st.karaFilter === 'fav';
-    var karaSource = showFavs ? favs : KARAOKE.map(function (k) {
-      // A song without a video ID opens a YouTube karaoké search instead (see open below).
-      return { key: 'k:' + (k.ytId || k.artist + '|' + k.title), title: k.title, artist: k.artist, link: k.ytId ? 'https://www.youtube.com/watch?v=' + k.ytId : '' };
-    });
+    var karaSource = showFavs ? favs : KARAOKE.map(function (k) { return self.karaItem(k); });
     var karaView = karaSource.filter(function (k) {
       return !karaQ || karaNorm(k.artist).indexOf(karaQ) >= 0 || karaNorm(k.title).indexOf(karaQ) >= 0;
     }).map(function (k) {
@@ -835,7 +857,7 @@ class App extends React.Component {
         ? { blank: true, text: st.revealed ? p.text : p.long ? '…' : '', style: st.revealed ? 'color: ' + GOOD_L + '; border-bottom-color: ' + GOOD + '; text-shadow: 0 0 24px color-mix(in oklch, ' + GOOD + ' 60%, transparent); animation: qpPop .6s ease-out .1s both;' : p.long ? 'min-width: 6ch;' : '' }
         : { blank: false, text: p.text };
     }) : [];
-    var favItem = isParoles ? this.favFromQuestion(q) : null;
+    var favItem = isParoles || (isBlind && q.answer) ? this.favFromQuestion(q) : null;
     var qFav = favItem ? this.isFav(favItem.key) : false;
     var tier = blindPoints(elapsed);
     var blindTiers = [4, 3, 2, 1].map(function (n, i) {
@@ -1038,7 +1060,7 @@ class App extends React.Component {
       qText: q.q,
       lyric: lyric,
       parolesSong: isParoles && st.revealed && q.answer ? q.answer : '',
-      showFav: isParoles && st.revealed,
+      showFav: !!favItem && st.revealed,
       favLabel: qFav ? '★ Dans les favoris karaoké' : '☆ Favori karaoké',
       favPressed: qFav,
       favStyle: qFav ? 'color: var(--color-accent-100); border-color: var(--color-accent); background: var(--color-accent-800);' : '',

@@ -11,7 +11,7 @@ var MODE_KEYS = ['quiz', 'paroles', 'blind'];
 
 // N'oubliez pas les paroles: the same song can be played at any level, chosen on the setup screen.
 var PAROLES_LEVELS = [
-  { key: 'facile',    label: 'Facile',         hint: 'Le début des paroles et 4 fins possibles : les candidats choisissent la bonne.' },
+  { key: 'facile',    label: 'Facile',         hint: 'Le début des paroles et 4 fins possibles (ou 4 mots pour le dernier mot) : les candidats choisissent la bonne.' },
   { key: 'moyen',     label: 'Moyen',          hint: 'Il manque le dernier mot, sans proposition.' },
   { key: 'difficile', label: 'Difficile',      hint: 'Il manque les 3 ou 4 derniers mots, sans proposition.' },
   { key: 'expert',    label: 'Très difficile', hint: 'Seul le début de la phrase est affiché : les candidats chantent toute la suite.' }

@@ -46,7 +46,7 @@ Open **Question bank**, then **Write a question**:
 ### Import from a spreadsheet (CSV / Google Sheets)
 Open **Question bank**, then **Import**, and paste cells straight from Google Sheets or upload a `.csv` file.
 
-Columns: `Question, A, B, C, D, Answer`, plus optional `Category`, `Link`, `Mode` and `Chanson` columns. `Mode` is `Quiz`, `Paroles` or `Blind test` (empty means Quiz). A blind-test row needs only `Link` and `Answer` (title, artist). A paroles row: `Question` is the start of the line followed by `___`, `A` the ending to find, `B`–`D` optional wrong endings (for easy mode), `Chanson` the title and artist.
+Columns: `Question, A, B, C, D, Answer`, plus optional `Category`, `Link`, `Mode` and `Chanson` columns. `Mode` is `Quiz`, `Paroles` or `Blind test` (empty means Quiz). A blind-test row needs only `Link` and `Answer` (title, artist). A paroles row: `Question` is the start of the line followed by `___`, `A` the ending to find, `B`–`D` optional wrong endings (for easy mode; single words make easy mode hide only the last word of the line and offer it among them), `Chanson` the title and artist.
 
 - `Answer` can be a letter (`B`), a number (`2`) or the exact answer text.
 - 2 to 6 answer columns are allowed.
@@ -108,7 +108,7 @@ Go to vercel.com/new and upload the folder that contains `index.html`.
 | `src/view.js` | The screens, written as HTML inside `` html`…` `` templates |
 | `src/karaoke.js` | The karaoké catalogue (one line per song: artist, title and YouTube ID, separated by `\|`; a song without an ID opens a YouTube karaoké search) |
 | `data/bibliotheque.csv` | The music library: every song with its artist and its Spotify / karaoké links. The karaoké catalogue and the blind-test questions are built from it |
-| `data/paroles-a-remplir.csv` | Template for N'oubliez pas les paroles: 2 rows per French song (a chorus, a verse). Fill in `Question` (the start of the line followed by `___`) and `A` (the ending to find), optionally `B`–`D` (wrong endings), then import it in **Réglages → Importer** |
+| `data/paroles-a-remplir.csv` | N'oubliez pas les paroles: 2 extracts per song of the library (a chorus and a verse when the song has a chorus). `Question` is the start of the line followed by `___`, `A` the rest of the line, `B`–`D` three wrong last words for easy mode, `Mot à trouver` the right last word. Import it in **Réglages → Importer** |
 | `src/lib/html.js` | Small helper that turns the `` html`…` `` templates into React elements (like JSX, without a build step) |
 | `styles/nocturne.css` | The Nocturne design system: color, type and spacing tokens, buttons, cards, forms |
 | `styles/app.css` | Stage animations (spotlights, twinkle, pop, shake) and helpers |

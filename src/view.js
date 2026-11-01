@@ -178,7 +178,7 @@ ${v.hasFormLinkHint ? html`
 <span style="font-size: 12px; color: var(--color-neutral-500)">Moyen : le dernier mot est caché. Difficile : les 3 ou 4 derniers. Très difficile : toute la suite.</span>
 </div>
 <div style="display: flex; flex-direction: column; gap: 8px">
-<div style="font-size: 12px; color: var(--color-neutral-400)">Fausses suites · proposées en mode facile (facultatif)</div>
+<div style="font-size: 12px; color: var(--color-neutral-400)">Fausses suites · proposées en mode facile (facultatif). Écrivez un seul mot chacune pour ne faire deviner que le dernier mot</div>
 ${v.formWrong.map((w) => html`
 <div key=${w.n}>
 <label for="qp-wrong-${w.n}" class="qp-sr">Fausse suite ${w.n}</label>
