@@ -6,6 +6,11 @@ It's a static site with no build step, server or database: plain HTML, CSS and J
 
 ## Features
 
+- **Navigation:** Quiz · N'oubliez pas les paroles · Blind test · Karaoké, with **Réglages** (questions: write, import, back up) on the right.
+- **Three game modes**, each with its own setup screen and questions:
+  - **Quiz:** multiple-choice questions.
+  - **N'oubliez pas les paroles:** a lyric line with the missing words as `___`, and 2–6 possible endings.
+  - **Blind test:** a YouTube or Spotify clip plays with the video hidden; the host marks each player ✓ or ✗, then the answer and the video are revealed.
 - **Contestants:** add players or teams once. They're remembered, and you tap to include or skip them each game.
 - **Question bank:** write questions with 2–6 answers, an optional **category** and an optional **link**. Search, edit or delete them.
 - **Game setup:** choose a category (or All), how many questions (5 / 10 / 15 / 20 / All) and an optional timer (15s / 30s / 60s).
@@ -20,6 +25,10 @@ It's a static site with no build step, server or database: plain HTML, CSS and J
 
 ## Adding questions
 
+### Published with the site (every device gets them)
+Put them in `data/questions.js` (the format for each mode is documented at the top of the file), then run `./update.sh`. The easiest way: **Réglages → Sauvegarder → Copier**, paste the text to Claude, and ask it to publish them.
+Questions written on a device stay on that device until published this way. Editing a published question on a device keeps that device's version; deleting it hides it on that device only.
+
 ### In the app
 Open **Question bank**, then **Write a question**:
 1. Type the question.
@@ -31,7 +40,7 @@ Open **Question bank**, then **Write a question**:
 ### Import from a spreadsheet (CSV / Google Sheets)
 Open **Question bank**, then **Import**, and paste cells straight from Google Sheets or upload a `.csv` file.
 
-Columns: `Question, A, B, C, D, Answer`, plus optional `Category` and `Link` columns.
+Columns: `Question, A, B, C, D, Answer`, plus optional `Category`, `Link` and `Mode` columns. `Mode` is `Quiz`, `Paroles` or `Blind test` (empty means Quiz). A blind-test row needs only `Link` and `Answer` (title, artist).
 
 - `Answer` can be a letter (`B`), a number (`2`) or the exact answer text.
 - 2 to 6 answer columns are allowed.
@@ -109,8 +118,6 @@ python3 -m http.server 8000
 ```
 
 Then open http://localhost:8000. Edit a file and reload the page; there's nothing to compile.
-
-To publish, run `./update.sh "what changed"`: it commits everything and pushes, and Vercel redeploys.
 
 ### Game options
 

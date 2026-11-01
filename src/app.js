@@ -4,9 +4,12 @@
  *   state      everything the app knows (players, questions, the game in progress…)
  *   renderVals turns the state into ready-to-show values and click handlers ("v")
  *   view(v)    src/view.js draws the screens from those values
+ *
+ * Three game modes share one engine: quiz and paroles (multiple choice), blind test (host marks ✓ / ✗).
+ * Modes, and the questions published with the app, live in src/bank.js and data/questions.js.
  */
 
-// Game options (they were "tweaks" in the design tool).
+// Game options.
 var CONFIG = {
   autoReveal: true,   // reveal the answer when the timer reaches zero
   hideScores: false   // hide the leaderboard until the final screen
@@ -14,8 +17,9 @@ var CONFIG = {
 
 var STORAGE_KEY = 'quizparty:v2';
 // What survives a reload: data, settings and the game in progress — not open dialogs, messages or search boxes.
-var SAVED_KEYS = ['roster', 'nextId', 'bank', 'nextQ', 'gameSize', 'timerSec', 'gameCat', 'tab', 'panel',
-  'screen', 'gameQs', 'gamePlayers', 'qIndex', 'picks', 'revealed', 'scores', 'results', 'lastGain', 'qDeadline'];
+var SAVED_KEYS = ['roster', 'nextId', 'bank', 'nextQ', 'hiddenShipped', 'gameSize', 'timerSec', 'gameCats', 'tab', 'panel', 'setMode',
+  'screen', 'gameMode', 'gameQs', 'gamePlayers', 'qIndex', 'picks', 'revealed', 'scores', 'results', 'lastGain', 'qDeadline'];
+var GAME_TABS = { quiz: 1, paroles: 1, blind: 1 };
 var lastSaved = null;
 
 function pickSaved(st) {
@@ -32,36 +36,74 @@ function saveState(st) {
 }
 
 function loadSaved() {
+  var s = null;
   try {
     var raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      var s = pickSaved(JSON.parse(raw));
-      if (!Array.isArray(s.bank) || !Array.isArray(s.roster)) return null;
-      // A reload in the middle of a timed question restarts that question's countdown instead of revealing at once.
-      if (s.screen === 'play' && s.qDeadline && !s.revealed && s.timerSec) s.qDeadline = Date.now() + s.timerSec * 1000;
-      return s;
+      s = pickSaved(JSON.parse(raw));
+      if (!Array.isArray(s.bank) || !Array.isArray(s.roster)) s = null;
+    } else {
+      var old = window.localStorage.getItem('quizparty:v1');   // very first version of the app
+      if (old) {
+        var o = JSON.parse(old);
+        var bank = (o.questions || []).map(function (q, i) { return { id: 'q' + (i + 1), q: q.q, options: q.options, correct: q.correct, played: 0 }; });
+        var roster = (o.players || []).map(function (p, i) { return { id: 'p' + (i + 1), name: p.name, active: true }; });
+        s = { bank: bank, nextQ: bank.length + 1, roster: roster, nextId: roster.length + 1 };
+      }
     }
-    var old = window.localStorage.getItem('quizparty:v1');   // very first version of the app
-    if (old) {
-      var o = JSON.parse(old);
-      var bank = (o.questions || []).map(function (q, i) { return { id: 'q' + (i + 1), q: q.q, options: q.options, correct: q.correct, played: 0 }; });
-      var roster = (o.players || []).map(function (p, i) { return { id: 'p' + (i + 1), name: p.name, active: true }; });
-      return { bank: bank, nextQ: bank.length + 1, roster: roster, nextId: roster.length + 1 };
-    }
-  } catch (e) {}
-  return null;
+  } catch (e) { s = null; }
+  s = s || {};
+  // Older saves: tabs were play / bank / kara, and every question was a quiz question.
+  if (s.tab === 'play' || !s.tab) s.tab = 'quiz';
+  if (s.tab === 'bank') s.tab = 'settings';
+  if (s.screen === 'play' && !s.gameMode) s.gameMode = 'quiz';
+  s.bank = mergeShipped(s.bank, s.hiddenShipped);
+  // A reload in the middle of a timed question restarts that question's countdown instead of revealing at once.
+  if (s.screen === 'play' && s.qDeadline && !s.revealed && s.timerSec) s.qDeadline = Date.now() + s.timerSec * 1000;
+  return s;
+}
+
+// Link → what to play. YouTube keeps its start time (&t=90, &t=1m30s); Spotify gives an embed uri.
+function parseMedia(raw) {
+  var u = (raw || '').trim();
+  if (!u) return null;
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  var m = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/i);
+  if (m) {
+    var start = 0, tm = u.match(/[?&#](?:t|start)=(?:(\d+)h)?(?:(\d+)m)?(\d+)?s?/);
+    if (tm) start = (+tm[1] || 0) * 3600 + (+tm[2] || 0) * 60 + (+tm[3] || 0);
+    return { kind: 'youtube', label: 'YouTube', id: m[1], start: start, href: u,
+      src: 'https://www.youtube.com/embed/' + m[1] + '?autoplay=1&rel=0' + (start ? '&start=' + start : '') };
+  }
+  var s = u.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:embed\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/i);
+  if (s) return { kind: 'spotify', label: 'Spotify', uri: 'spotify:' + s[1] + ':' + s[2], start: 0, href: u,
+    src: 'https://open.spotify.com/embed/' + s[1] + '/' + s[2] + '?utm_source=generator' };
+  var host = '';
+  try { host = new URL(u).hostname.replace(/^www\./, ''); } catch (e) {}
+  return { kind: 'link', label: 'Lien', href: u, host: host };
+}
+
+// "Et je m'en vais ___ demain" → [{ text: "Et je m'en vais " }, { blank: true }, { text: ' demain' }]
+function lyricParts(line) {
+  var parts = [];
+  String(line || '').split(/(_{3,})/).forEach(function (p) {
+    if (!p) return;
+    parts.push(/^_{3,}$/.test(p) ? { blank: true } : { text: p });
+  });
+  if (!parts.some(function (p) { return p.blank; })) parts.push({ text: ' ' }, { blank: true });
+  return parts;
 }
 
 class App extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      screen: 'home', tab: 'play',
       roster: [], nextId: 1, newName: '',
-      bank: [], nextQ: 1, gameSize: 10, timerSec: 0, search: '',
-      form: { editingId: null, q: '', category: '', link: '', opts: ['', '', '', ''], correct: 0 }, gameCat: 'all',
-      formMsg: '', formOk: true, panel: 'form', confirmDelete: null, confirmReplace: false,
+      bank: [], nextQ: 1, hiddenShipped: [], gameSize: 10, timerSec: 0, search: '',
+      form: this.blankForm('quiz'), gameCats: { quiz: 'all', paroles: 'all', blind: 'all' },
+      formMsg: '', formOk: true, panel: 'form', setMode: 'all', confirmDelete: null, confirmReplace: false,
       csvText: '', importMsg: '', importOk: true, copied: false,
+      tab: 'quiz', screen: 'home', gameMode: 'quiz',
       gameQs: [], gamePlayers: [], qIndex: 0, picks: {}, revealed: false, scores: {}, confirmQuit: false,
       qDeadline: null, results: {}, lastGain: {},
       karaSearch: '', karaPlaying: null
@@ -72,8 +114,7 @@ class App extends React.Component {
     var self = this;
     this.onEsc = function (e) { if (e.key === 'Escape' && self.state.karaPlaying != null) self.setState({ karaPlaying: null }); };
     window.addEventListener('keydown', this.onEsc);
-    var saved = loadSaved();
-    if (saved) this.setState(saved);
+    this.setState(loadSaved());
     this.tick = setInterval(function () {
       var st = self.state;
       if (st.screen !== 'play' || !st.qDeadline || st.revealed) return;
@@ -98,9 +139,10 @@ class App extends React.Component {
     window.removeEventListener('keydown', this.onEsc);
   }
 
-  // Saves players, questions, settings and the game in progress — only when they change
-  // (the timer redraws 4×/s, which used to rewrite localStorage every time).
+  // Saves players, questions, settings and the game in progress — only when they change.
   componentDidUpdate() { saveState(this.state); }
+
+  // ---------- CSV ----------
 
   parseRows(text) {
     var firstLine = (text.split(/\r?\n/)[0] || '');
@@ -126,47 +168,81 @@ class App extends React.Component {
     return rows;
   }
 
+  // Columns: Question, A, B, (C…F), Réponse, plus optional Catégorie, Lien and Mode (Quiz / Paroles / Blind test).
+  // With a header row the columns are found by name; without one the order above is used and every row is a quiz question.
   parseQuestions(text) {
     var rows = this.parseRows(text || '');
-    var out = [], skipped = 0, catCol = -1, linkCol = -1;
+    var out = [], skipped = 0, cols = null;
+    var norm = function (s) { return String(s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
     for (var r = 0; r < rows.length; r++) {
       var cells = rows[r].map(function (x) { return String(x).trim(); });
-      if (r === 0 && /^(question|questions|q)$/i.test(cells[0] || '')) {
-        for (var h = 0; h < cells.length; h++) {
-          if (/^(category|categorie|catégorie|theme|thème)$/i.test(cells[h])) catCol = h;
-          else if (/^(link|url|lien|media|média)$/i.test(cells[h])) linkCol = h;
-        }
+      if (r === 0 && cells.some(function (c) { return /^(question|questions|q|mode|reponse|answer)$/.test(norm(c)); })) {
+        cols = { opts: [] };
+        cells.forEach(function (c, h) {
+          var n = norm(c);
+          if (/^(question|questions|q|paroles)$/.test(n)) cols.q = h;
+          else if (/^([a-f]|[1-6]|reponse [a-f])$/.test(n)) cols.opts.push(h);
+          else if (/^(reponse|answer|bonne reponse|solution)$/.test(n)) cols.ans = h;
+          else if (/^(category|categorie|theme)$/.test(n)) cols.cat = h;
+          else if (/^(link|url|lien|media)$/.test(n)) cols.link = h;
+          else if (/^(mode|type|jeu)$/.test(n)) cols.mode = h;
+        });
         continue;
       }
-      var cat = catCol >= 0 ? (cells[catCol] || '') : '';
-      var link = linkCol >= 0 ? (cells[linkCol] || '') : '';
-      [catCol, linkCol].filter(function (x) { return x >= 0; }).sort(function (a, b) { return b - a; }).forEach(function (x) { cells.splice(x, 1); });
-      while (cells.length && cells[cells.length - 1] === '') cells.pop();
-      if (!link && cells.length > 4 && /^https?:\/\//i.test(cells[cells.length - 1])) link = cells.pop();
-      if (!cells.length) continue;
-      if (cells.length < 4) { skipped++; continue; }
-      var ans = cells[cells.length - 1];
-      var options = cells.slice(1, cells.length - 1).filter(function (x) { return x !== ''; }).slice(0, 6);
-      if (!cells[0] || options.length < 2) { skipped++; continue; }
-      var idx = -1;
-      if (/^[A-Fa-f]$/.test(ans)) idx = ans.toUpperCase().charCodeAt(0) - 65;
-      else if (/^[1-6]$/.test(ans)) idx = parseInt(ans, 10) - 1;
-      else { var low = ans.toLowerCase(); for (var k = 0; k < options.length; k++) if (options[k].toLowerCase() === low) idx = k; }
-      if (idx < 0 || idx >= options.length) { skipped++; continue; }
-      out.push({ q: cells[0], options: options, correct: idx, category: cat, link: link });
+      if (!cells.some(Boolean)) continue;
+      var q;
+      if (cols) {
+        var get = function (i) { return i == null ? '' : (cells[i] || ''); };
+        q = { mode: parseMode(get(cols.mode)), q: get(cols.q), category: get(cols.cat), link: get(cols.link) };
+        if (q.mode === 'blind') { q.answer = get(cols.ans); q.options = []; q.correct = -1; }
+        else { q.options = cols.opts.map(get).filter(Boolean).slice(0, 6); q.correct = this.answerIndex(get(cols.ans), q.options); }
+      } else {
+        while (cells.length && cells[cells.length - 1] === '') cells.pop();
+        var link = cells.length > 4 && /^https?:\/\//i.test(cells[cells.length - 1]) ? cells.pop() : '';
+        var options = cells.slice(1, cells.length - 1).filter(Boolean).slice(0, 6);
+        q = { mode: 'quiz', q: cells[0] || '', options: options, correct: this.answerIndex(cells[cells.length - 1], options), category: '', link: link };
+      }
+      var problem = this.checkQuestion(q);
+      if (problem) { skipped++; continue; }
+      out.push(q);
     }
     return { questions: out, skipped: skipped };
+  }
+
+  answerIndex(ans, options) {
+    ans = String(ans || '').trim();
+    if (/^[A-Fa-f]$/.test(ans)) return ans.toUpperCase().charCodeAt(0) - 65;
+    if (/^[1-6]$/.test(ans)) return parseInt(ans, 10) - 1;
+    var low = ans.toLowerCase();
+    for (var k = 0; k < options.length; k++) if (options[k].toLowerCase() === low) return k;
+    return -1;
+  }
+
+  // Returns what's wrong with a question, or '' when it can be played.
+  checkQuestion(q) {
+    if (q.mode === 'blind') {
+      var m = parseMedia(q.link);
+      if (!m || (m.kind !== 'youtube' && m.kind !== 'spotify')) return 'Collez un lien YouTube ou Spotify.';
+      if (!q.answer) return 'Écrivez la réponse (titre, artiste).';
+      return '';
+    }
+    if (!q.q) return q.mode === 'paroles' ? 'Écrivez d\'abord la ligne de paroles.' : 'Écrivez d\'abord la question.';
+    if (q.options.length < 2) return 'Indiquez au moins deux réponses.';
+    if (q.correct < 0 || q.correct >= q.options.length) return 'La réponse marquée comme bonne est vide.';
+    return '';
   }
 
   doImport(text, replace) {
     var res = this.parseQuestions(text);
     if (!res.questions.length) { this.setState({ importMsg: 'Aucune question valide trouvée. Vérifiez l\'ordre des colonnes.', importOk: false, confirmReplace: false }); return; }
-    var n = replace ? 1 : this.state.nextQ;
-    var added = res.questions.map(function (q) { return { id: 'q' + (n++), q: q.q, options: q.options, correct: q.correct, category: q.category, link: q.link || '', played: 0 }; });
-    var bank = replace ? added : this.state.bank.concat(added);
+    var st = this.state, n = st.nextQ;
+    var added = res.questions.map(function (q) { return Object.assign({ id: 'q' + (n++), answer: '', played: 0 }, q); });
+    var hidden = st.hiddenShipped;
+    if (replace) hidden = st.bank.filter(function (q) { return q.shipped; }).map(function (q) { return q.id; }).concat(hidden);
+    var bank = replace ? added : st.bank.concat(added);
     var pl = added.length > 1 ? 's' : '';
-    var msg = (replace ? 'Banque remplacée : ' : '') + added.length + ' question' + pl + (replace ? '' : ' ajoutée' + pl) + (res.skipped ? ' (' + res.skipped + ' ligne' + (res.skipped > 1 ? 's ignorées' : ' ignorée') + ' : vérifiez la colonne réponse)' : '');
-    this.setState({ bank: bank, nextQ: n, importMsg: msg, importOk: true, csvText: '', confirmReplace: false });
+    var msg = (replace ? 'Banque remplacée : ' : '') + added.length + ' question' + pl + (replace ? '' : ' ajoutée' + pl) + (res.skipped ? ' (' + res.skipped + ' ligne' + (res.skipped > 1 ? 's ignorées' : ' ignorée') + ' : vérifiez la colonne réponse ou le lien)' : '');
+    this.setState({ bank: bank, nextQ: n, hiddenShipped: hidden, importMsg: msg, importOk: true, csvText: '', confirmReplace: false });
   }
 
   csvCell(v) { v = String(v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
@@ -176,40 +252,30 @@ class App extends React.Component {
     var max = this.state.bank.reduce(function (m, q) { return Math.max(m, q.options.length); }, 4);
     var head = ['Question'];
     for (var i = 0; i < max; i++) head.push(L[i]);
-    head.push('Réponse'); head.push('Catégorie'); head.push('Lien');
+    head.push('Réponse', 'Catégorie', 'Lien', 'Mode');
     var lines = [head.join(',')];
     this.state.bank.forEach(function (q) {
       var cells = [q.q];
       for (var i = 0; i < max; i++) cells.push(q.options[i] || '');
-      cells.push(L[q.correct]); cells.push(q.category || ''); cells.push(q.link || '');
+      cells.push(q.mode === 'blind' ? q.answer : L[q.correct], q.category || '', q.link || '', MODES[q.mode].tag);
       lines.push(cells.map(function (c) { return self.csvCell(c); }).join(','));
     });
     return lines.join('\n');
   }
 
-  emptyForm() { return { editingId: null, q: '', category: (this.state.form && this.state.form.category) || '', link: '', opts: ['', '', '', ''], correct: 0 }; }
+  // ---------- Questions ----------
 
-  parseMedia(raw) {
-    var u = (raw || '').trim();
-    if (!u) return null;
-    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
-    var m = u.match(/(?:youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{11})/i);
-    if (m) {
-      var tm = u.match(/[?&](?:t|start)=(\d+)/);
-      return { kind: 'youtube', label: 'YouTube', src: 'https://www.youtube.com/embed/' + m[1] + '?autoplay=1&rel=0' + (tm ? '&start=' + tm[1] : ''), href: u };
-    }
-    var s = u.match(/open\.spotify\.com\/(?:intl-[a-z]{2}\/)?(?:embed\/)?(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/i);
-    if (s) return { kind: 'spotify', label: 'Spotify', src: 'https://open.spotify.com/embed/' + s[1] + '/' + s[2] + '?utm_source=generator', href: u };
-    var host = '';
-    try { host = new URL(u).hostname.replace(/^www\./, ''); } catch (e) {}
-    return { kind: 'link', label: 'Lien', href: u, host: host };
-  }
+  blankForm(mode, category) { return { editingId: null, mode: mode || 'quiz', q: '', category: category || '', link: '', answer: '', opts: ['', '', '', ''], correct: 0 }; }
+  emptyForm() { var f = this.state.form || {}; return this.blankForm(f.mode, f.category); }
 
-  catPool(st) {
-    var c = st.gameCat;
-    if (c === 'all' || c == null) return st.bank;
-    var p = st.bank.filter(function (q) { return (q.category || '') === c; });
-    return p.length ? p : st.bank;
+  modeQuestions(mode) { return this.state.bank.filter(function (q) { return (q.mode || 'quiz') === mode; }); }
+
+  catPool(mode) {
+    var all = this.modeQuestions(mode);
+    var c = (this.state.gameCats || {})[mode];
+    if (c === 'all' || c == null) return { list: all, cat: 'all' };
+    var p = all.filter(function (q) { return (q.category || '') === c; });
+    return p.length ? { list: p, cat: c } : { list: all, cat: 'all' };
   }
 
   ranked(players, scores) {
@@ -220,12 +286,14 @@ class App extends React.Component {
     return list;
   }
 
+  // ---------- Game ----------
+
   deadline() { return this.state.timerSec ? Date.now() + this.state.timerSec * 1000 : null; }
 
-  startGame() {
+  startGame(mode) {
     var st = this.state;
     var players = st.roster.filter(function (p) { return p.active; }).map(function (p) { return { id: p.id, name: p.name }; });
-    var src = this.catPool(st);
+    var src = this.catPool(mode).list;
     if (!players.length || !src.length) return;
     var n = st.gameSize === 'all' ? src.length : Math.min(st.gameSize, src.length);
     var pool = src.map(function (q) { return { q: q, r: Math.random() }; })
@@ -235,20 +303,22 @@ class App extends React.Component {
     var scores = {};
     players.forEach(function (p) { scores[p.id] = 0; });
     this.setState({
-      screen: 'play', gamePlayers: players,
-      gameQs: pool.map(function (q) { return { id: q.id, q: q.q, options: q.options.slice(), correct: q.correct, category: q.category || '', link: q.link || '' }; }),
+      screen: 'play', gameMode: mode, tab: mode, gamePlayers: players,
+      gameQs: pool.map(function (q) { return { id: q.id, mode: mode, q: q.q, options: q.options.slice(), correct: q.correct, answer: q.answer || '', category: q.category || '', link: q.link || '' }; }),
       qIndex: 0, picks: {}, revealed: false, scores: scores, confirmQuit: false,
       qDeadline: this.deadline(), results: {}, lastGain: {}
     });
   }
 
+  isRight(q, pick) { return q.mode === 'blind' ? pick === true : pick === q.correct; }
+
   doReveal() {
-    var st = this.state;
+    var st = this.state, self = this;
     if (st.revealed) return;
     var q = st.gameQs[st.qIndex];
     if (!q) return;
     var scores = Object.assign({}, st.scores), gain = {}, hits = 0;
-    st.gamePlayers.forEach(function (p) { if (st.picks[p.id] === q.correct) { scores[p.id] = (scores[p.id] || 0) + 1; gain[p.id] = true; hits++; } });
+    st.gamePlayers.forEach(function (p) { if (self.isRight(q, st.picks[p.id])) { scores[p.id] = (scores[p.id] || 0) + 1; gain[p.id] = true; hits++; } });
     var results = Object.assign({}, st.results);
     results[st.qIndex] = { hits: hits, of: st.gamePlayers.length };
     var bank = st.bank.map(function (b) { return b.id === q.id ? Object.assign({}, b, { played: (b.played || 0) + 1 }) : b; });
@@ -259,6 +329,12 @@ class App extends React.Component {
     var st = this.state;
     if (st.qIndex + 1 >= st.gameQs.length) this.setState({ screen: 'end', qDeadline: null });
     else this.setState({ qIndex: st.qIndex + 1, picks: {}, revealed: false, lastGain: {}, qDeadline: this.deadline() });
+  }
+
+  goSettings(mode) {
+    var patch = { tab: 'settings', panel: 'form', confirmDelete: null };
+    if (mode) { patch.setMode = mode; if (!this.state.form.editingId) patch.form = this.blankForm(mode, ''); }
+    this.setState(patch);
   }
 
   renderStage(mode, qi) {
@@ -297,25 +373,40 @@ class App extends React.Component {
   renderVals() {
     var self = this;
     var st = this.state;
-    var karaQ = karaNorm(st.karaSearch.trim());
-    var karaView = KARAOKE.filter(function (k) {
-      return !karaQ || karaNorm(k.artist).indexOf(karaQ) >= 0 || karaNorm(k.title).indexOf(karaQ) >= 0;
-    }).map(function (k) {
-      return {
-        artist: k.artist, title: k.title,
-        thumb: 'https://i.ytimg.com/vi/' + k.ytId + '/hqdefault.jpg',
-        open: function () { self.setState({ karaPlaying: k.id }); }
-      };
-    });
-    var karaNow = st.karaPlaying != null ? KARAOKE[st.karaPlaying] : null;
     var L = 'ABCDEF';
     var hideScores = CONFIG.hideScores;
     var ACTIVE_TAB = 'color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 12%, transparent);';
     var ERR = 'color: var(--color-neutral-200);';
     var OK = 'color: var(--color-accent-300);';
+    var ON = 'border-color: var(--color-accent); color: var(--color-accent-100); background: var(--color-accent-800);';
+    var OFF = 'border-color: var(--color-divider); color: var(--color-neutral-300);';
+    var GOOD = 'oklch(0.74 0.15 155)', GOOD_L = 'oklch(0.86 0.1 155)', BAD = 'oklch(0.66 0.17 22)', BAD_L = 'oklch(0.83 0.09 22)';
     var bank = st.bank;
     var roster = st.roster;
     var active = roster.filter(function (p) { return p.active; });
+    var inGame = st.screen === 'play' || st.screen === 'end';
+
+    // ----- Karaoké -----
+    var karaQ = karaNorm(st.karaSearch.trim());
+    var karaView = KARAOKE.filter(function (k) {
+      return !karaQ || karaNorm(k.artist).indexOf(karaQ) >= 0 || karaNorm(k.title).indexOf(karaQ) >= 0;
+    }).map(function (k) {
+      return { artist: k.artist, title: k.title, thumb: 'https://i.ytimg.com/vi/' + k.ytId + '/hqdefault.jpg', open: function () { self.setState({ karaPlaying: k.id }); } };
+    });
+    var karaNow = st.karaPlaying != null ? KARAOKE[st.karaPlaying] : null;
+
+    // ----- Navigation -----
+    var navTabs = MODE_KEYS.concat(['kara']).map(function (k) {
+      var on = st.tab === k;
+      return { label: k === 'kara' ? 'Karaoké' : MODES[k].tab, active: on, style: on ? ACTIVE_TAB : '', go: function () { self.setState({ tab: k, confirmDelete: null }); } };
+    });
+
+    // ----- Setup screen of the current game tab -----
+    var setupMode = GAME_TABS[st.tab] ? st.tab : 'quiz';
+    var M = MODES[setupMode];
+    var modeAll = this.modeQuestions(setupMode);
+    var poolInfo = this.catPool(setupMode);
+    var pool = poolInfo.list, curCat = poolInfo.cat;
 
     var addPlayer = function () {
       var name = self.state.newName.trim();
@@ -324,17 +415,15 @@ class App extends React.Component {
     };
 
     var catCounts = {}, uncat = 0;
-    bank.forEach(function (q) { var c = (q.category || '').trim(); if (c) catCounts[c] = (catCounts[c] || 0) + 1; else uncat++; });
+    modeAll.forEach(function (q) { var c = (q.category || '').trim(); if (c) catCounts[c] = (catCounts[c] || 0) + 1; else uncat++; });
     var catList = Object.keys(catCounts).sort(function (a, b) { return a.localeCompare(b); });
-    var pool = this.catPool(st);
-    var curCat = pool === bank ? 'all' : st.gameCat;
-    var ON = 'border-color: var(--color-accent); color: var(--color-accent-100); background: var(--color-accent-800);';
-    var OFF = 'border-color: var(--color-divider); color: var(--color-neutral-300);';
-    var catDefs = [{ key: 'all', label: 'Toutes', count: bank.length }].concat(catList.map(function (c) { return { key: c, label: c, count: catCounts[c] }; }));
+    var catDefs = [{ key: 'all', label: 'Toutes', count: modeAll.length }].concat(catList.map(function (c) { return { key: c, label: c, count: catCounts[c] }; }));
     if (uncat && catList.length) catDefs.push({ key: '', label: 'Sans catégorie', count: uncat });
     var catOptions = catDefs.map(function (c) {
       var on = curCat === c.key;
-      return { label: c.label, count: c.count, active: on, style: on ? ON : OFF, pick: function () { self.setState({ gameCat: c.key }); } };
+      return { label: c.label, count: c.count, active: on, style: on ? ON : OFF, pick: function () {
+        var gc = Object.assign({}, self.state.gameCats); gc[setupMode] = c.key; self.setState({ gameCats: gc });
+      } };
     });
     var sizeOptions = [5, 10, 15, 20, 'all'].map(function (s) {
       var isActive = st.gameSize === s;
@@ -344,21 +433,26 @@ class App extends React.Component {
     var timerOptions = [0, 15, 30, 60].map(function (s) {
       return { label: s ? s + ' s' : 'Non', active: st.timerSec === s, pick: function () { self.setState({ timerSec: s }); } };
     });
-    var autoReveal = CONFIG.autoReveal;
-    var timerHint = st.timerSec ? 'Un compte à rebours s\'affiche à l\'écran' + (autoReveal ? ' et la réponse est révélée à zéro.' : '. Vous révélez quand vous voulez.') : 'Pas de chrono. Vous révélez quand tout le monde a répondu.';
+    var listen = setupMode === 'blind' ? ' pendant l\'écoute' : '';
+    var timerHint = st.timerSec ? 'Un compte à rebours s\'affiche à l\'écran' + listen + (CONFIG.autoReveal ? ' et la réponse est révélée à zéro.' : '. Vous révélez quand vous voulez.') : 'Pas de chrono. Vous révélez quand tout le monde a répondu.';
     var gameN = st.gameSize === 'all' ? pool.length : Math.min(st.gameSize, pool.length);
-    var canStart = active.length > 0 && bank.length > 0;
-    var startHint = !bank.length ? 'Votre banque de questions est vide.'
+    var canStart = active.length > 0 && modeAll.length > 0;
+    var startHint = !modeAll.length ? 'Aucune question de ce jeu pour l\'instant.'
       : !active.length ? 'Choisissez au moins un candidat.'
-      : active.length + ' candidat' + (active.length > 1 ? 's' : '') + ' · ' + gameN + ' question' + (gameN > 1 ? 's' : '') + (curCat !== 'all' ? ' · ' + (curCat || 'Sans catégorie') : '') + (st.timerSec ? ' · ' + st.timerSec + ' s chacune' : '');
+      : active.length + ' candidat' + (active.length > 1 ? 's' : '') + ' · ' + gameN + ' ' + (gameN > 1 ? M.items : M.items.replace(/s$/, '')) + (curCat !== 'all' ? ' · ' + (curCat || 'Sans catégorie') : '') + (st.timerSec ? ' · ' + st.timerSec + ' s chacun' + (M.items === 'chansons' ? 'e' : '') : '');
 
+    // ----- Réglages: form -----
     var f = st.form;
     var setForm = function (patch) { self.setState({ form: Object.assign({}, self.state.form, patch), formMsg: '' }); };
+    var fBlind = f.mode === 'blind', fParoles = f.mode === 'paroles';
+    var formModes = MODE_KEYS.map(function (k) {
+      return { label: MODES[k].tag, active: f.mode === k, pick: function () { setForm({ mode: k }); } };
+    });
     var formOpts = f.opts.map(function (v, i) {
       var isC = f.correct === i;
       return {
         letter: L[i], value: v, correct: isC,
-        placeholder: i < 2 ? 'Réponse ' + L[i] : 'Réponse ' + L[i] + ' (facultative)',
+        placeholder: (fParoles ? 'Fin possible ' : 'Réponse ') + L[i] + (i < 2 ? '' : ' (facultative)'),
         style: isC ? 'color: var(--color-accent-100); background: var(--color-accent-800); border-color: var(--color-accent);' : 'border-color: var(--color-divider); color: var(--color-neutral-400);',
         markCorrect: function () { setForm({ correct: i }); },
         onChange: function (e) { var o = self.state.form.opts.slice(); o[i] = e.target.value; setForm({ opts: o }); }
@@ -366,28 +460,41 @@ class App extends React.Component {
     });
     var saveForm = function () {
       var cur = self.state.form;
-      var q = cur.q.trim();
-      var opts = [], correct = -1;
-      cur.opts.forEach(function (o, i) { var t = o.trim(); if (t) { if (i === cur.correct) correct = opts.length; opts.push(t); } });
-      if (!q) { self.setState({ formMsg: 'Écrivez d\'abord la question.', formOk: false }); return; }
-      if (opts.length < 2) { self.setState({ formMsg: 'Indiquez au moins deux réponses.', formOk: false }); return; }
-      if (correct < 0) { self.setState({ formMsg: 'La réponse marquée comme bonne est vide.', formOk: false }); return; }
+      var q = { mode: cur.mode, q: cur.q.trim(), category: (cur.category || '').trim(), link: (cur.link || '').trim(), answer: '', options: [], correct: -1 };
+      if (cur.mode === 'blind') { q.q = ''; q.answer = (cur.answer || '').trim(); }
+      else cur.opts.forEach(function (o, i) { var t = o.trim(); if (t) { if (i === cur.correct) q.correct = q.options.length; q.options.push(t); } });
+      if (cur.mode === 'paroles' && q.q && !/_{3,}/.test(q.q)) { self.setState({ formMsg: 'Mettez ___ à la place des mots manquants.', formOk: false }); return; }
+      var problem = self.checkQuestion(q);
+      if (problem) { self.setState({ formMsg: problem, formOk: false }); return; }
       if (cur.editingId) {
-        var b2 = self.state.bank.map(function (x) { return x.id === cur.editingId ? Object.assign({}, x, { q: q, options: opts, correct: correct, category: (cur.category || '').trim(), link: (cur.link || '').trim() }) : x; });
+        var b2 = self.state.bank.map(function (x) { return x.id === cur.editingId ? Object.assign({}, x, q, { edited: x.shipped ? true : x.edited }) : x; });
         self.setState({ bank: b2, form: self.emptyForm(), formMsg: 'Question mise à jour.', formOk: true });
       } else {
-        var nq = { id: 'q' + self.state.nextQ, q: q, options: opts, correct: correct, category: (cur.category || '').trim(), link: (cur.link || '').trim(), played: 0 };
+        var nq = Object.assign({ id: 'q' + self.state.nextQ, played: 0 }, q);
         self.setState({ bank: self.state.bank.concat([nq]), nextQ: self.state.nextQ + 1, form: self.emptyForm(), formMsg: 'Ajoutée. Question suivante ?', formOk: true });
       }
     };
+    var formMedia = parseMedia(f.link);
 
+    // ----- Réglages: list -----
+    var modeCounts = { all: bank.length };
+    MODE_KEYS.forEach(function (k) { modeCounts[k] = bank.filter(function (q) { return q.mode === k; }).length; });
+    var setFilters = ['all'].concat(MODE_KEYS).map(function (k) {
+      return { label: k === 'all' ? 'Tout' : MODES[k].tag, count: modeCounts[k], active: st.setMode === k, pick: function () { self.setState({ setMode: k }); } };
+    });
     var term = st.search.trim().toLowerCase();
     var bankView = [];
     bank.forEach(function (q, i) {
-      if (term && (q.q + ' ' + q.options.join(' ') + ' ' + (q.category || '')).toLowerCase().indexOf(term) < 0) return;
+      if (st.setMode !== 'all' && q.mode !== st.setMode) return;
+      if (term && (q.q + ' ' + q.options.join(' ') + ' ' + q.answer + ' ' + (q.category || '')).toLowerCase().indexOf(term) < 0) return;
       var confirming = st.confirmDelete === q.id;
+      var blind = q.mode === 'blind';
       bankView.push({
-        n: i + 1, text: q.q, category: q.category || '', hasCategory: !!q.category, hasLink: !!(q.link || '').trim(), linkLabel: (self.parseMedia(q.link) || {}).label || '', answer: L[q.correct] + ': ' + q.options[q.correct], optCount: q.options.length,
+        n: i + 1, text: blind ? q.answer : q.q, modeTag: MODES[q.mode].tag,
+        category: q.category || '', hasCategory: !!q.category, shipped: !!q.shipped,
+        hasLink: !!(q.link || '').trim(), linkLabel: (parseMedia(q.link) || {}).label || '',
+        hasAnswer: !blind, answer: blind ? '' : L[q.correct] + ': ' + q.options[q.correct],
+        details: blind ? 'extrait' : q.options.length + ' réponses',
         played: q.played ? 'jouée ' + q.played + '×' : 'jamais jouée',
         style: f.editingId === q.id ? 'background: var(--color-accent-900); box-shadow: inset 0 0 0 1px var(--color-accent-700);' : '',
         delLabel: confirming ? 'Confirmer' : 'Supprimer',
@@ -395,30 +502,31 @@ class App extends React.Component {
         edit: function () {
           var opts = q.options.slice();
           while (opts.length < 4) opts.push('');
-          self.setState({ panel: 'form', form: { editingId: q.id, q: q.q, category: q.category || '', link: q.link || '', opts: opts, correct: q.correct }, formMsg: '', confirmDelete: null });
+          self.setState({ panel: 'form', form: { editingId: q.id, mode: q.mode, q: q.q, category: q.category || '', link: q.link || '', answer: q.answer || '', opts: opts, correct: Math.max(0, q.correct) }, formMsg: '', confirmDelete: null });
         },
         del: function () {
           if (self.state.confirmDelete !== q.id) { self.setState({ confirmDelete: q.id }); return; }
           var patch = { bank: self.state.bank.filter(function (x) { return x.id !== q.id; }), confirmDelete: null };
+          if (q.shipped) patch.hiddenShipped = (self.state.hiddenShipped || []).concat([q.id]);
           if (self.state.form.editingId === q.id) patch.form = self.emptyForm();
           self.setState(patch);
         }
       });
     });
-
     var panelTabs = [['form', 'Écrire une question'], ['import', 'Importer'], ['export', 'Sauvegarder']].map(function (p) {
       return { label: p[1], active: st.panel === p[0], pick: function () { self.setState({ panel: p[0], confirmReplace: false, copied: false }); } };
     });
-    var exportText = st.panel === 'export' ? this.exportCsv() : '';
+    var exportText = st.tab === 'settings' && st.panel === 'export' ? this.exportCsv() : '';
 
-    // Game
+    // ----- Game -----
+    var gm = st.gameMode || 'quiz';
     var players = st.gamePlayers;
     var gq = st.gameQs;
-    var q = gq[st.qIndex] || { q: '', options: [], correct: 0 };
+    var q = gq[st.qIndex] || { mode: gm, q: '', options: [], correct: 0, answer: '' };
+    var isBlind = q.mode === 'blind', isParoles = q.mode === 'paroles';
     var pickCounts = q.options.map(function () { return 0; });
     var answered = 0;
     players.forEach(function (p) { var k = st.picks[p.id]; if (k !== undefined && k !== null) { answered++; if (pickCounts[k] !== undefined) pickCounts[k]++; } });
-    var GOOD = 'oklch(0.74 0.15 155)', GOOD_L = 'oklch(0.86 0.1 155)', BAD = 'oklch(0.66 0.17 22)', BAD_L = 'oklch(0.83 0.09 22)';
     var optionsView = q.options.map(function (text, i) {
       var style = '', chip = 'background: var(--color-neutral-800); color: var(--color-neutral-100);';
       if (st.revealed) {
@@ -435,38 +543,50 @@ class App extends React.Component {
     var rows = players.map(function (p, pi) {
       var pick = st.picks[p.id];
       var has = pick !== undefined && pick !== null;
-      var ok = has && pick === q.correct;
+      var ok = has && self.isRight(q, pick);
       var result, resultStyle = 'color: var(--color-neutral-500);', rowStyle = '';
       if (st.revealed) {
         var delay = (0.3 + pi * 0.05).toFixed(2) + 's';
-        if (ok) { result = 'Bonne réponse  +1'; resultStyle = 'color: ' + GOOD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + GOOD + ' 16%, var(--color-surface)); box-shadow: inset 0 0 0 1px ' + GOOD + '; animation: qpPop .5s ease-out ' + delay + ' both;'; }
-        else if (has) { result = 'Mauvaise réponse'; resultStyle = 'color: ' + BAD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + BAD + ' 12%, var(--color-surface)); box-shadow: inset 0 0 0 1px color-mix(in oklch, ' + BAD + ' 65%, transparent); animation: qpShake .45s ease-out ' + delay + ' both;'; }
-        else result = 'Pas de réponse';
-      } else result = has ? 'A répondu' : 'En attente…';
-      var buttons = q.options.map(function (_, i) {
-        var picked = has && pick === i;
-        var style = 'border-color: var(--color-divider); color: var(--color-neutral-300);';
-        if (!st.revealed) { if (picked) style = 'border-color: var(--color-accent); color: var(--color-accent-100); background: var(--color-accent-800);'; }
-        else if (i === q.correct) style = picked ? 'border-color: ' + GOOD + '; color: var(--color-bg); background: ' + GOOD + ';' : 'border-color: ' + GOOD + '; color: ' + GOOD_L + ';';
-        else if (picked) style = 'border-color: ' + BAD + '; color: ' + BAD_L + '; background: color-mix(in oklch, ' + BAD + ' 30%, var(--color-surface)); text-decoration: line-through;';
-        else style += ' opacity: 0.3;';
-        return {
-          letter: L[i], pressed: picked, style: style,
-          pick: function () {
-            if (self.state.revealed) return;
-            var np = Object.assign({}, self.state.picks);
-            if (np[p.id] === i) delete np[p.id]; else np[p.id] = i;
-            self.setState({ picks: np });
-          }
-        };
-      });
+        if (ok) { result = isBlind ? 'Trouvé  +1' : 'Bonne réponse  +1'; resultStyle = 'color: ' + GOOD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + GOOD + ' 16%, var(--color-surface)); box-shadow: inset 0 0 0 1px ' + GOOD + '; animation: qpPop .5s ease-out ' + delay + ' both;'; }
+        else if (has) { result = isBlind ? 'Raté' : 'Mauvaise réponse'; resultStyle = 'color: ' + BAD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + BAD + ' 12%, var(--color-surface)); box-shadow: inset 0 0 0 1px color-mix(in oklch, ' + BAD + ' 65%, transparent); animation: qpShake .45s ease-out ' + delay + ' both;'; }
+        else result = isBlind ? 'Pas noté' : 'Pas de réponse';
+      } else result = isBlind ? (pick === true ? 'Trouvé' : pick === false ? 'Raté' : 'À noter…') : (has ? 'A répondu' : 'En attente…');
+      var setPick = function (val) {
+        if (self.state.revealed) return;
+        var np = Object.assign({}, self.state.picks);
+        if (np[p.id] === val) delete np[p.id]; else np[p.id] = val;
+        self.setState({ picks: np });
+      };
+      var buttons;
+      if (isBlind) {
+        buttons = [[true, '✓', 'a trouvé'], [false, '✗', 'n\'a pas trouvé']].map(function (b) {
+          var picked = pick === b[0], style;
+          if (!st.revealed) style = picked ? (b[0] ? 'border-color: ' + GOOD + '; color: var(--color-bg); background: ' + GOOD + ';' : 'border-color: ' + BAD + '; color: ' + BAD_L + '; background: color-mix(in oklch, ' + BAD + ' 30%, var(--color-surface));') : OFF;
+          else style = picked ? (b[0] ? 'border-color: ' + GOOD + '; color: var(--color-bg); background: ' + GOOD + ';' : 'border-color: ' + BAD + '; color: ' + BAD_L + '; background: color-mix(in oklch, ' + BAD + ' 30%, var(--color-surface));') : OFF + ' opacity: 0.3;';
+          return { letter: b[1], label: p.name + ' ' + b[2], pressed: picked, style: style + ' font-size: 20px;', pick: function () { setPick(b[0]); } };
+        });
+      } else {
+        buttons = q.options.map(function (_, i) {
+          var picked = has && pick === i;
+          var style = OFF;
+          if (!st.revealed) { if (picked) style = ON; }
+          else if (i === q.correct) style = picked ? 'border-color: ' + GOOD + '; color: var(--color-bg); background: ' + GOOD + ';' : 'border-color: ' + GOOD + '; color: ' + GOOD_L + ';';
+          else if (picked) style = 'border-color: ' + BAD + '; color: ' + BAD_L + '; background: color-mix(in oklch, ' + BAD + ' 30%, var(--color-surface)); text-decoration: line-through;';
+          else style += ' opacity: 0.3;';
+          return { letter: L[i], label: p.name + ' répond ' + L[i], pressed: picked, style: style, pick: function () { setPick(i); } };
+        });
+      }
       return { name: p.name, result: result, resultStyle: resultStyle, style: rowStyle, buttons: buttons };
     });
     var isLast = st.qIndex + 1 >= gq.length;
-    var media = st.screen === 'play' && st.revealed ? this.parseMedia(q.link) : null;
-    var formMedia = this.parseMedia(f.link);
+    var media = st.screen === 'play' && st.revealed && !isBlind ? parseMedia(q.link) : null;
     var ranking = this.ranked(players, st.scores);
-    var inGame = st.screen === 'play' || st.screen === 'end';
+    var blindMedia = st.screen === 'play' && isBlind ? parseMedia(q.link) : null;
+    var lyric = isParoles ? lyricParts(q.q).map(function (p) {
+      return p.blank
+        ? { blank: true, text: st.revealed ? q.options[q.correct] : '', style: st.revealed ? 'color: ' + GOOD_L + '; border-bottom-color: ' + GOOD + '; text-shadow: 0 0 24px color-mix(in oklch, ' + GOOD + ' 60%, transparent); animation: qpPop .6s ease-out .1s both;' : '' }
+        : { blank: false, text: p.text };
+    }) : [];
 
     var hasTimer = st.screen === 'play' && !!st.qDeadline && st.timerSec > 0;
     var remainMs = hasTimer ? Math.max(0, st.qDeadline - Date.now()) : 0;
@@ -475,9 +595,7 @@ class App extends React.Component {
     var timerLabel = st.revealed ? 'Révélée' : remain === 0 ? 'Temps écoulé' : Math.floor(remain / 60) + ':' + String(remain % 60).padStart(2, '0');
     var timerStyle = (!st.revealed && remain <= 5) ? 'color: var(--color-accent);' : 'color: var(--color-neutral-200);';
 
-    var boardList = hideScores
-      ? players.map(function (p) { return { id: p.id, name: p.name, score: '–', rank: '' }; })
-      : ranking;
+    var boardList = hideScores ? players.map(function (p) { return { id: p.id, name: p.name, score: '–', rank: '' }; }) : ranking;
     var scoreboard = boardList.map(function (s) {
       var lead = !hideScores && s.rank === 1 && s.score > 0;
       return {
@@ -488,13 +606,15 @@ class App extends React.Component {
 
     var recap = gq.map(function (x, i) {
       var r = st.results[i];
-      return { n: i + 1, q: x.q, answer: L[x.correct] + ': ' + x.options[x.correct], hits: r ? r.hits + '/' + r.of : '–', rate: r && r.of ? r.hits / r.of : 1 };
+      var blind = x.mode === 'blind';
+      return { n: i + 1, q: blind ? x.answer : x.q, answer: blind ? (x.category || 'Blind test') : L[x.correct] + ': ' + x.options[x.correct], hits: r ? r.hits + '/' + r.of : '–', rate: r && r.of ? r.hits / r.of : 1 };
     });
     var rankAll = ranking.map(function (r) { return { rank: r.rank, name: r.name, score: r.score, pct: gq.length ? Math.round(r.score / gq.length * 100) : 0 }; });
     var podH = [150, 110, 80];
-    var podium = [1, 0, 2].filter(function (i) { return rankAll[i]; }).map(function (i, k) {
+    var podium = [1, 0, 2].filter(function (i) { return rankAll[i]; }).map(function (i) {
       var r = rankAll[i];
-            return Object.assign({}, r, { pts: r.score + (r.score > 1 ? ' pts' : ' pt'),
+      return Object.assign({}, r, {
+        pts: r.score + (r.score > 1 ? ' pts' : ' pt'),
         delay: (i === 0 ? 0.6 : i === 1 ? 0.3 : 0) + 's',
         // Height follows the rank, so two people tied for 1st stand equally high.
         style: 'height: ' + podH[Math.min(r.rank, 3) - 1] + 'px; ' + (r.rank === 1
@@ -504,19 +624,22 @@ class App extends React.Component {
     });
     var played = recap.filter(function (c) { return st.results[c.n - 1]; });
     var hardestItem = played.slice().sort(function (a, b) { return a.rate - b.rate; })[0];
+    var plural = function (s) { return !(/^1\//.test(s) || /^0\//.test(s)); };
+    var unit = isBlind ? 'Extrait' : isParoles ? 'Chanson' : 'Question';
 
     return {
-      showTabs: !inGame,
-      isHome: !inGame && st.tab === 'play',
-      isBank: !inGame && st.tab === 'bank',
+      // navigation
+      showTabs: !inGame, navTabs: navTabs,
+      isSettingsTab: st.tab === 'settings', settingsTabStyle: st.tab === 'settings' ? ACTIVE_TAB : '',
+      goSettings: function () { self.goSettings(); },
+      isHome: !inGame && !!GAME_TABS[st.tab],
+      isSettings: !inGame && st.tab === 'settings',
+      isKara: !inGame && st.tab === 'kara',
       isPlay: st.screen === 'play',
       isEnd: st.screen === 'end',
-      isPlayTab: st.tab === 'play', isBankTab: st.tab === 'bank',
-      playTabStyle: st.tab === 'play' ? ACTIVE_TAB : '',
-      bankTabStyle: st.tab === 'bank' ? ACTIVE_TAB : '',
-      goPlayTab: function () { self.setState({ tab: 'play', confirmDelete: null }); },
-      goBankTab: function () { self.setState({ tab: 'bank' }); },
-      goKaraTab: function () { self.setState({ tab: 'kara' }); },
+      bankCount: bank.length,
+
+      // karaoké
       karaOpen: !!karaNow,
       karaNowTitle: karaNow ? karaNow.title : '',
       karaNowArtist: karaNow ? karaNow.artist : '',
@@ -524,17 +647,14 @@ class App extends React.Component {
       karaNowYt: karaNow ? 'https://www.youtube.com/watch?v=' + karaNow.ytId : '',
       karaClose: function () { self.setState({ karaPlaying: null }); },
       karaStop: function (e) { e.stopPropagation(); },
-      isKaraTab: st.tab === 'kara',
-      karaTabStyle: st.tab === 'kara' ? ACTIVE_TAB : '',
-      isKara: !inGame && st.tab === 'kara',
       karaSearch: st.karaSearch,
       onKaraSearch: function (e) { self.setState({ karaSearch: e.target.value }); },
       karaCount: karaView.length === KARAOKE.length ? KARAOKE.length : karaView.length + ' / ' + KARAOKE.length,
       karaEmpty: karaView.length === 0,
       karaView: karaView,
-      bankCount: bank.length,
-      bankEmpty: bank.length === 0,
 
+      // setup
+      modeTitle: M.tab,
       activeCount: active.length,
       rosterCount: roster.length,
       rosterView: roster.map(function (p) {
@@ -552,41 +672,49 @@ class App extends React.Component {
       onName: function (e) { self.setState({ newName: e.target.value }); },
       onNameKey: function (e) { if (e.key === 'Enter') { e.preventDefault(); addPlayer(); } },
       addPlayer: addPlayer,
-      sizeOptions: sizeOptions,
       catOptions: catOptions,
-      formLink: f.link || '',
-      onFormLink: function (e) { setForm({ link: e.target.value }); },
-      hasFormLinkHint: !!formMedia,
-      formLinkHint: !formMedia ? '' : formMedia.kind === 'youtube' ? 'Vidéo YouTube : lue au moment du résultat' : formMedia.kind === 'spotify' ? 'Spotify : le lecteur apparaît au moment du résultat' : 'Lien web : affiché avec un bouton Découvrir',
-      showMedia: !!media,
-      showMediaBar: !!media && media.kind !== 'youtube',
-      showRows: !(media && media.kind === 'youtube'),
-      mediaYoutube: !!media && media.kind === 'youtube',
-      mediaSpotify: !!media && media.kind === 'spotify',
-      mediaLink: !!media && media.kind === 'link',
-      mediaSrc: media && media.src ? media.src : '',
-      mediaHref: media ? media.href : '',
-      mediaHost: media && media.host ? media.host : '',
-      catNames: catList.map(function (c) { return { name: c }; }),
-      formCat: f.category || '',
-      onFormCat: function (e) { setForm({ category: e.target.value }); },
-      qKicker: 'Question ' + (st.qIndex + 1) + (q.category ? ' · ' + q.category : ''),
+      sizeLabel: M.sizeLabel,
+      sizeOptions: sizeOptions,
       timerOptions: timerOptions,
       timerHint: timerHint,
       startHint: startHint,
+      modeEmpty: modeAll.length === 0,
+      addFirstLabel: 'Ajoutez d\'abord des ' + M.empty,
+      goAddFirst: function () { self.goSettings(setupMode); },
+      startLabel: M.start,
       startDisabled: !canStart,
-      start: function () { self.startGame(); },
+      start: function () { self.startGame(setupMode); },
 
+      // réglages
       panelTabs: panelTabs,
       panelForm: st.panel === 'form',
       panelImport: st.panel === 'import',
       panelExport: st.panel === 'export',
       formTitle: f.editingId ? 'Modifier la question' : 'Nouvelle question',
+      formModes: formModes,
+      formBlind: fBlind,
+      formNotBlind: !fBlind,
+      formQLabel: fParoles ? 'Paroles' : 'Question',
+      formQPlaceholder: fParoles ? 'Une ligne de la chanson, avec ___ à la place des mots manquants' : 'Saisissez la question',
+      formOptsLabel: fParoles ? 'Fins possibles · touchez la lettre de la bonne' : 'Réponses · touchez la lettre de la bonne réponse',
+      formLinkLabel: fBlind ? 'Lien YouTube ou Spotify' : 'Lien',
+      formLinkHelp: fBlind ? '(obligatoire ; ajoutez &t=42 pour démarrer à 0:42)' : '(facultatif, affiché après la révélation)',
       formQ: f.q,
       onFormQ: function (e) { setForm({ q: e.target.value }); },
+      formAnswer: f.answer || '',
+      onFormAnswer: function (e) { setForm({ answer: e.target.value }); },
       formOpts: formOpts,
       canAddOpt: f.opts.length < 6,
       addOpt: function () { setForm({ opts: self.state.form.opts.concat(['']) }); },
+      formLink: f.link || '',
+      onFormLink: function (e) { setForm({ link: e.target.value }); },
+      hasFormLinkHint: !!formMedia,
+      formLinkHint: !formMedia ? '' : fBlind
+        ? (formMedia.kind === 'link' ? 'Ce lien ne peut pas être lu : il faut YouTube ou Spotify' : formMedia.label + ' : l\'extrait est joué vidéo masquée' + (formMedia.start ? ', à partir de ' + Math.floor(formMedia.start / 60) + ':' + String(formMedia.start % 60).padStart(2, '0') : ''))
+        : formMedia.kind === 'youtube' ? 'Vidéo YouTube : lue au moment du résultat' : formMedia.kind === 'spotify' ? 'Spotify : le lecteur apparaît au moment du résultat' : 'Lien web : affiché avec un bouton Découvrir',
+      catNames: Object.keys(bank.reduce(function (o, q) { if (q.category) o[q.category] = 1; return o; }, {})).sort().map(function (c) { return { name: c }; }),
+      formCat: f.category || '',
+      onFormCat: function (e) { setForm({ category: e.target.value }); },
       hasFormMsg: !!st.formMsg,
       formMsg: st.formMsg,
       formMsgStyle: st.formOk ? OK : ERR,
@@ -594,10 +722,12 @@ class App extends React.Component {
       saveLabel: f.editingId ? 'Enregistrer' : 'Ajouter à la banque',
       resetForm: function () { self.setState({ form: self.emptyForm(), formMsg: '' }); },
       resetLabel: f.editingId ? 'Annuler' : 'Effacer',
+      setFilters: setFilters,
+      listCount: bankView.length,
       searchValue: st.search,
       onSearch: function (e) { self.setState({ search: e.target.value }); },
       bankView: bankView,
-
+      bankEmpty: bankView.length === 0,
       csvValue: st.csvText,
       onCsv: function (e) { self.setState({ csvText: e.target.value }); },
       onFile: function (e) {
@@ -624,23 +754,43 @@ class App extends React.Component {
         try { navigator.clipboard.writeText(self.exportCsv()).then(function () { self.setState({ copied: true }); }); } catch (e) {}
       },
 
+      // game
+      unitLabel: unit,
       qNumber: st.qIndex + 1,
       qTotal: gq.length,
+      qKicker: unit + ' ' + (st.qIndex + 1) + (q.category ? ' · ' + q.category : ''),
+      isQuizQ: !isBlind && !isParoles,
+      isParolesQ: isParoles,
+      isBlindQ: isBlind,
+      hasOptions: !isBlind,
       qText: q.q,
+      lyric: lyric,
+      blindTitle: st.revealed ? q.answer : 'Quel est ce titre ?',
+      blindTitleStyle: st.revealed ? 'color: ' + GOOD_L + '; text-shadow: 0 0 36px color-mix(in oklch, ' + GOOD + ' 55%, transparent); animation: qpPop .6s ease-out .1s both;' : '',
+      blindPlayer: blindMedia ? React.createElement(MediaPlayer, { key: 'clip' + st.qIndex + '-' + q.id, media: blindMedia, hidden: !st.revealed, autoPlay: true }) : null,
+      blindNoMedia: isBlind && !blindMedia,
       optionsView: optionsView,
       rows: rows,
-      answeredLabel: answered + ' / ' + players.length + ' ont répondu',
+      answeredLabel: answered + ' / ' + players.length + (isBlind ? ' notés' : ' ont répondu'),
       spaceAction: st.revealed ? 'continuer' : 'révéler',
       revealed: st.revealed,
       notRevealed: !st.revealed,
       reveal: function () { self.doReveal(); },
-      nextLabel: isLast ? 'Classement final' : 'Question suivante',
+      nextLabel: isLast ? 'Classement final' : (isBlind ? 'Extrait suivant' : isParoles ? 'Chanson suivante' : 'Question suivante'),
       next: function () { self.doNext(); },
       quitLabel: st.confirmQuit ? 'Sûr ? Terminer' : 'Quitter la partie',
       quitGame: function () {
         if (!self.state.confirmQuit) { self.setState({ confirmQuit: true }); return; }
-        self.setState({ screen: 'home', tab: 'play', confirmQuit: false, picks: {}, revealed: false, qDeadline: null });
+        self.setState({ screen: 'home', tab: self.state.gameMode || 'quiz', confirmQuit: false, picks: {}, revealed: false, qDeadline: null });
       },
+      showMediaBar: !!media && media.kind !== 'youtube',
+      showRows: !(media && media.kind === 'youtube'),
+      mediaYoutube: !!media && media.kind === 'youtube',
+      mediaSpotify: !!media && media.kind === 'spotify',
+      mediaLink: !!media && media.kind === 'link',
+      mediaSrc: media && media.src ? media.src : '',
+      mediaHref: media ? media.href : '',
+      mediaHost: media && media.host ? media.host : '',
       hasTimer: hasTimer,
       timerLabel: timerLabel,
       timerStyle: timerStyle,
@@ -648,21 +798,18 @@ class App extends React.Component {
       scoreboard: scoreboard,
       scoresHidden: hideScores,
 
+      // final
+      endKicker: MODES[gm].tab,
       winnerName: ranking.filter(function (r) { return r.rank === 1; }).map(function (r) { return r.name; }).join(' et '),
-      ranking: ranking.map(function (r) {
-        return {
-          rank: r.rank, name: r.name, score: r.score, pct: gq.length ? Math.round(r.score / gq.length * 100) : 0,
-          style: r.rank === 1 ? 'background: var(--color-accent-900); box-shadow: 0 0 0 1px var(--color-accent), 0 0 32px color-mix(in srgb, var(--color-accent) 25%, transparent);' : ''
-        };
-      }),
       podium: podium,
       restRanking: rankAll.slice(3),
       stage: this.renderStage(st.screen === 'end' ? 'end' : st.screen === 'play' ? (st.revealed ? 'reveal' : 'play') : 'idle', st.qIndex),
       recap: recap,
+      recapTitle: gm === 'blind' ? 'Récap des extraits' : gm === 'paroles' ? 'Récap des chansons' : 'Récap des questions',
       hasHardest: !!hardestItem && hardestItem.rate < 1,
-      hardest: hardestItem ? 'Q' + hardestItem.n + ', ' + hardestItem.hits + ' bonne' + (/^1\//.test(hardestItem.hits) || /^0\//.test(hardestItem.hits) ? '' : 's') + ' réponse' + (/^1\//.test(hardestItem.hits) || /^0\//.test(hardestItem.hits) ? '' : 's') : '',
-      playAgain: function () { self.startGame(); },
-      goHome: function () { self.setState({ screen: 'home', tab: 'play', picks: {}, revealed: false }); }
+      hardest: hardestItem ? (gm === 'blind' ? 'E' : gm === 'paroles' ? 'C' : 'Q') + hardestItem.n + ', ' + hardestItem.hits + ' bonne' + (plural(hardestItem.hits) ? 's' : '') + ' réponse' + (plural(hardestItem.hits) ? 's' : '') : '',
+      playAgain: function () { self.startGame(self.state.gameMode || 'quiz'); },
+      goHome: function () { self.setState({ screen: 'home', tab: self.state.gameMode || 'quiz', picks: {}, revealed: false }); }
     };
   }
 
