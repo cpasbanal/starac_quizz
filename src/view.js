@@ -77,7 +77,7 @@ ${v.rosterView.map((p, pI) => html`
 </div>
 <div style="display: flex; flex-direction: column; gap: 8px">
 <div class="card-kicker">Catégorie</div>
-<div style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 128px; overflow-y: auto; padding: 2px">
+<div style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 208px; overflow-y: auto; padding: 2px">
 ${v.catOptions.map((c, cI) => html`
 <button key=${cI} class="btn btn-secondary" onClick=${c.pick} aria-pressed=${c.active} style="height: 34px; padding: 0 12px; gap: 6px; ${c.style}">${c.label}<span style="font-size: 12px; color: var(--color-neutral-400)">${c.count}</span></button>
 `)}
