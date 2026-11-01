@@ -18,7 +18,9 @@ var CONFIG = {
 var STORAGE_KEY = 'quizparty:v2';
 // What survives a reload: data, settings and the game in progress — not open dialogs, messages or search boxes.
 var SAVED_KEYS = ['roster', 'nextId', 'bank', 'nextQ', 'hiddenShipped', 'gameSize', 'timerSec', 'gameCats', 'tab', 'panel', 'setMode',
-  'screen', 'gameMode', 'gameQs', 'gamePlayers', 'qIndex', 'picks', 'revealed', 'scores', 'results', 'lastGain', 'qDeadline'];
+  'parolesLevel', 'favorites',
+  'screen', 'gameMode', 'gameQs', 'gamePlayers', 'qIndex', 'picks', 'revealed', 'scores', 'results', 'lastGain', 'qDeadline',
+  'buzz', 'blindPhase', 'blindMs'];
 var GAME_TABS = { quiz: 1, paroles: 1, blind: 1 };
 var lastSaved = null;
 
@@ -60,6 +62,8 @@ function loadSaved() {
   s.bank = mergeShipped(s.bank, s.hiddenShipped);
   // A reload in the middle of a timed question restarts that question's countdown instead of revealing at once.
   if (s.screen === 'play' && s.qDeadline && !s.revealed && s.timerSec) s.qDeadline = Date.now() + s.timerSec * 1000;
+  // A blind-test clip playing at reload is stopped: the music doesn't survive a reload either.
+  if (s.blindPhase === 'playing') s.blindPhase = 'stopped';
   return s;
 }
 
@@ -94,6 +98,51 @@ function lyricParts(line) {
   return parts;
 }
 
+// The whole line of a paroles question, the missing words filled in.
+function fullLyric(q) {
+  var end = q.options[q.correct] || '';
+  return lyricParts(q.q).map(function (p) { return p.blank ? end : p.text; }).join('').replace(/\s+/g, ' ').trim();
+}
+
+// What the players see of the line at a level: text parts, and hidden parts (the words to find).
+//   facile  the ending is hidden (the 4 endings are shown as choices)
+//   moyen   the last word is hidden; difficile: the last 3 or 4 words
+//   expert  only the start of the line is shown
+function parolesParts(q, level) {
+  var parts = lyricParts(q.q), end = q.options[q.correct] || '';
+  if (level === 'facile') return parts.map(function (p) { return p.blank ? { hidden: true, text: end } : { text: p.text }; });
+  if (level === 'expert') {
+    var cut = parts.findIndex(function (p) { return p.blank; });
+    var start = parts.slice(0, cut).map(function (p) { return p.text; }).join('');
+    var rest = parts.slice(cut).map(function (p) { return p.blank ? end : p.text; }).join('');
+    return (start.trim() ? [{ text: start }] : []).concat([{ hidden: true, text: rest.trim(), long: true }]);
+  }
+  var tokens = fullLyric(q).split(/(\s+)/);
+  var words = [];
+  tokens.forEach(function (t, i) { if (t && !/^\s+$/.test(t)) words.push(i); });
+  var n = level === 'moyen' ? 1 : words.length >= 7 ? 4 : 3;
+  n = Math.max(1, Math.min(n, words.length - 1));
+  var hide = {};
+  words.slice(-n).forEach(function (i) { hide[i] = true; });
+  var out = [];
+  tokens.forEach(function (t, i) {
+    if (!t) return;
+    if (!hide[i]) { out.push({ text: t }); return; }
+    var m = t.match(/^([«"'(]*)(.*?)([.,!?;:…»")]*)$/);   // punctuation stays visible
+    if (m[1]) out.push({ text: m[1] });
+    out.push({ hidden: true, text: m[2] || t });
+    if (m[3]) out.push({ text: m[3] });
+  });
+  return out;
+}
+
+// "Tourner dans le vide, Indila" → { title: 'Tourner dans le vide', artist: 'Indila' }
+function songParts(s) {
+  s = String(s || '').trim();
+  var i = s.lastIndexOf(',');
+  return i > 0 ? { title: s.slice(0, i).trim(), artist: s.slice(i + 1).trim() } : { title: s, artist: '' };
+}
+
 class App extends React.Component {
   constructor(props) {
     super(props);
@@ -106,7 +155,8 @@ class App extends React.Component {
       tab: 'quiz', screen: 'home', gameMode: 'quiz',
       gameQs: [], gamePlayers: [], qIndex: 0, picks: {}, revealed: false, scores: {}, confirmQuit: false,
       qDeadline: null, results: {}, lastGain: {},
-      karaSearch: '', karaPlaying: null
+      parolesLevel: 'facile', buzz: {}, blindPhase: 'ready', blindMs: 0, blindAt: null,
+      favorites: [], karaSearch: '', karaFilter: 'all', karaPlaying: null
     };
   }
 
@@ -117,10 +167,16 @@ class App extends React.Component {
     this.setState(loadSaved());
     this.tick = setInterval(function () {
       var st = self.state;
-      if (st.screen !== 'play' || !st.qDeadline || st.revealed) return;
+      if (st.screen !== 'play' || st.revealed) return;
+      if (st.blindPhase === 'playing') {
+        if (self.blindElapsed() >= BLIND_MAX_MS) self.blindStop();
+        else self.forceUpdate();
+        return;
+      }
+      if (!st.qDeadline) return;
       if (Date.now() >= st.qDeadline && CONFIG.autoReveal) self.doReveal();
       else self.forceUpdate();
-    }, 250);
+    }, 200);
     this.onKey = function (e) {
       var st = self.state;
       if (st.screen !== 'play') return;
@@ -128,7 +184,13 @@ class App extends React.Component {
       // Typing in a field keeps its keys. Buttons don't: after tapping players' answers the focus sits on
       // an answer button, and Space used to un-tick that answer instead of revealing.
       if (/INPUT|TEXTAREA|SELECT/.test(tag)) return;
-      if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (st.revealed) self.doNext(); else self.doReveal(); }
+      if (e.key !== ' ' && e.key !== 'Enter') return;
+      e.preventDefault();
+      var q = st.gameQs[st.qIndex];
+      if (st.revealed) self.doNext();
+      else if (q && q.mode === 'blind' && st.blindPhase === 'ready') self.blindPlay();
+      else if (q && q.mode === 'blind' && st.blindPhase === 'playing') self.blindStop();
+      else self.doReveal();
     };
     window.addEventListener('keydown', this.onKey);
   }
@@ -186,6 +248,7 @@ class App extends React.Component {
           else if (/^(category|categorie|theme)$/.test(n)) cols.cat = h;
           else if (/^(link|url|lien|media)$/.test(n)) cols.link = h;
           else if (/^(mode|type|jeu)$/.test(n)) cols.mode = h;
+          else if (/^(chanson|song|titre)$/.test(n)) cols.song = h;
         });
         continue;
       }
@@ -195,7 +258,11 @@ class App extends React.Component {
         var get = function (i) { return i == null ? '' : (cells[i] || ''); };
         q = { mode: parseMode(get(cols.mode)), q: get(cols.q), category: get(cols.cat), link: get(cols.link) };
         if (q.mode === 'blind') { q.answer = get(cols.ans); q.options = []; q.correct = -1; }
-        else { q.options = cols.opts.map(get).filter(Boolean).slice(0, 6); q.correct = this.answerIndex(get(cols.ans), q.options); }
+        else {
+          q.options = cols.opts.map(get).filter(Boolean).slice(0, 6);
+          q.correct = this.answerIndex(get(cols.ans) || (q.mode === 'paroles' ? 'A' : ''), q.options);
+          if (q.mode === 'paroles') q.answer = get(cols.song);
+        }
       } else {
         while (cells.length && cells[cells.length - 1] === '') cells.pop();
         var link = cells.length > 4 && /^https?:\/\//i.test(cells[cells.length - 1]) ? cells.pop() : '';
@@ -226,7 +293,12 @@ class App extends React.Component {
       if (!q.answer) return 'Écrivez la réponse (titre, artiste).';
       return '';
     }
-    if (!q.q) return q.mode === 'paroles' ? 'Écrivez d\'abord la ligne de paroles.' : 'Écrivez d\'abord la question.';
+    if (q.mode === 'paroles') {
+      if (!q.q.replace(/_{3,}/g, '').trim()) return 'Écrivez d\'abord le début des paroles.';
+      if (!q.options[q.correct]) return 'Écrivez la suite à trouver.';
+      return '';
+    }
+    if (!q.q) return 'Écrivez d\'abord la question.';
     if (q.options.length < 2) return 'Indiquez au moins deux réponses.';
     if (q.correct < 0 || q.correct >= q.options.length) return 'La réponse marquée comme bonne est vide.';
     return '';
@@ -252,12 +324,12 @@ class App extends React.Component {
     var max = this.state.bank.reduce(function (m, q) { return Math.max(m, q.options.length); }, 4);
     var head = ['Question'];
     for (var i = 0; i < max; i++) head.push(L[i]);
-    head.push('Réponse', 'Catégorie', 'Lien', 'Mode');
+    head.push('Réponse', 'Catégorie', 'Lien', 'Mode', 'Chanson');
     var lines = [head.join(',')];
     this.state.bank.forEach(function (q) {
       var cells = [q.q];
       for (var i = 0; i < max; i++) cells.push(q.options[i] || '');
-      cells.push(q.mode === 'blind' ? q.answer : L[q.correct], q.category || '', q.link || '', MODES[q.mode].tag);
+      cells.push(q.mode === 'blind' ? q.answer : L[q.correct], q.category || '', q.link || '', MODES[q.mode].tag, q.mode === 'paroles' ? q.answer || '' : '');
       lines.push(cells.map(function (c) { return self.csvCell(c); }).join(','));
     });
     return lines.join('\n');
@@ -302,15 +374,39 @@ class App extends React.Component {
     for (var i = pool.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
     var scores = {};
     players.forEach(function (p) { scores[p.id] = 0; });
+    var level = st.parolesLevel || 'facile';
     this.setState({
       screen: 'play', gameMode: mode, tab: mode, gamePlayers: players,
-      gameQs: pool.map(function (q) { return { id: q.id, mode: mode, q: q.q, options: q.options.slice(), correct: q.correct, answer: q.answer || '', category: q.category || '', link: q.link || '' }; }),
+      gameQs: pool.map(function (q) {
+        var g = { id: q.id, mode: mode, q: q.q, options: q.options.slice(), correct: q.correct, answer: q.answer || '', category: q.category || '', link: q.link || '' };
+        if (mode === 'paroles') {
+          // Easy needs endings to choose from: a song written without them is played at the medium level.
+          g.level = level === 'facile' && g.options.length < 2 ? 'moyen' : level;
+          if (g.level === 'facile') {
+            var right = g.options[g.correct];
+            g.options = g.options.map(function (o) { return { o: o, r: Math.random() }; }).sort(function (a, b) { return a.r - b.r; }).map(function (x) { return x.o; });
+            g.correct = g.options.indexOf(right);
+          }
+        }
+        return g;
+      }),
       qIndex: 0, picks: {}, revealed: false, scores: scores, confirmQuit: false,
-      qDeadline: this.deadline(), results: {}, lastGain: {}
+      qDeadline: mode === 'blind' ? null : this.deadline(), results: {}, lastGain: {},
+      buzz: {}, blindPhase: 'ready', blindMs: 0, blindAt: null
     });
   }
 
-  isRight(q, pick) { return q.mode === 'blind' ? pick === true : pick === q.correct; }
+  // Blind test and the paroles levels without choices: the host marks each player ✓ or ✗.
+  marksOnly(q) { return q.mode === 'blind' || (q.mode === 'paroles' && q.level && q.level !== 'facile'); }
+
+  isRight(q, pick) { return this.marksOnly(q) ? pick === true : pick === q.correct; }
+
+  // Points a player wins on a question: 1 for a right answer; in the blind test, 4 to 1 depending on when they buzzed.
+  points(q, pid, st) {
+    if (!this.isRight(q, st.picks[pid])) return 0;
+    if (q.mode !== 'blind') return 1;
+    return st.buzz[pid] == null ? 0 : blindPoints(st.buzz[pid]);
+  }
 
   doReveal() {
     var st = this.state, self = this;
@@ -318,17 +414,63 @@ class App extends React.Component {
     var q = st.gameQs[st.qIndex];
     if (!q) return;
     var scores = Object.assign({}, st.scores), gain = {}, hits = 0;
-    st.gamePlayers.forEach(function (p) { if (self.isRight(q, st.picks[p.id])) { scores[p.id] = (scores[p.id] || 0) + 1; gain[p.id] = true; hits++; } });
+    st.gamePlayers.forEach(function (p) {
+      var pts = self.points(q, p.id, st);
+      if (pts) { scores[p.id] = (scores[p.id] || 0) + pts; gain[p.id] = pts; hits++; }
+    });
     var results = Object.assign({}, st.results);
     results[st.qIndex] = { hits: hits, of: st.gamePlayers.length };
     var bank = st.bank.map(function (b) { return b.id === q.id ? Object.assign({}, b, { played: (b.played || 0) + 1 }) : b; });
-    this.setState({ revealed: true, scores: scores, lastGain: gain, results: results, bank: bank });
+    this.setState({ revealed: true, scores: scores, lastGain: gain, results: results, bank: bank, blindPhase: 'stopped', blindMs: this.blindElapsed(), blindAt: null });
   }
 
   doNext() {
     var st = this.state;
-    if (st.qIndex + 1 >= st.gameQs.length) this.setState({ screen: 'end', qDeadline: null });
-    else this.setState({ qIndex: st.qIndex + 1, picks: {}, revealed: false, lastGain: {}, qDeadline: this.deadline() });
+    var reset = { picks: {}, revealed: false, lastGain: {}, buzz: {}, blindPhase: 'ready', blindMs: 0, blindAt: null };
+    if (st.qIndex + 1 >= st.gameQs.length) this.setState(Object.assign(reset, { screen: 'end', qDeadline: null }));
+    else this.setState(Object.assign(reset, { qIndex: st.qIndex + 1, qDeadline: st.gameMode === 'blind' ? null : this.deadline() }));
+  }
+
+  // ---------- Blind test clock ----------
+
+  blindElapsed() {
+    var st = this.state;
+    return Math.min(BLIND_MAX_MS, (st.blindMs || 0) + (st.blindAt ? Date.now() - st.blindAt : 0));
+  }
+
+  blindPlay() {
+    var st = this.state;
+    if (st.revealed || st.blindPhase === 'playing' || this.blindElapsed() >= BLIND_MAX_MS) return;
+    this.setState({ blindPhase: 'playing', blindAt: Date.now() });
+  }
+
+  blindStop() {
+    if (this.state.blindPhase !== 'playing') return;
+    this.setState({ blindPhase: 'stopped', blindMs: this.blindElapsed(), blindAt: null });
+  }
+
+  // While the clip plays, tapping a player records when they buzzed; tapping again cancels it.
+  buzzPlayer(pid) {
+    var st = this.state;
+    if (st.revealed || st.blindPhase !== 'playing') return;
+    var buzz = Object.assign({}, st.buzz), picks = Object.assign({}, st.picks);
+    if (buzz[pid] != null) { delete buzz[pid]; delete picks[pid]; } else buzz[pid] = this.blindElapsed();
+    this.setState({ buzz: buzz, picks: picks });
+  }
+
+  // ---------- Karaoké favorites ----------
+
+  isFav(key) { return (this.state.favorites || []).some(function (f) { return f.key === key; }); }
+
+  toggleFav(item) {
+    var favs = this.state.favorites || [];
+    this.setState({ favorites: this.isFav(item.key) ? favs.filter(function (f) { return f.key !== item.key; }) : favs.concat([item]) });
+  }
+
+  // A paroles question → its karaoké favorite.
+  favFromQuestion(q) {
+    var s = songParts(q.answer);
+    return { key: 'q:' + q.id, title: s.title || fullLyric(q), artist: s.artist, link: q.link || '' };
   }
 
   goSettings(mode) {
@@ -388,12 +530,33 @@ class App extends React.Component {
 
     // ----- Karaoké -----
     var karaQ = karaNorm(st.karaSearch.trim());
-    var karaView = KARAOKE.filter(function (k) {
+    var favs = st.favorites || [];
+    var showFavs = st.karaFilter === 'fav';
+    var karaSource = showFavs ? favs : KARAOKE.map(function (k) {
+      return { key: 'k:' + k.ytId, title: k.title, artist: k.artist, link: 'https://www.youtube.com/watch?v=' + k.ytId };
+    });
+    var karaView = karaSource.filter(function (k) {
       return !karaQ || karaNorm(k.artist).indexOf(karaQ) >= 0 || karaNorm(k.title).indexOf(karaQ) >= 0;
     }).map(function (k) {
-      return { artist: k.artist, title: k.title, thumb: 'https://i.ytimg.com/vi/' + k.ytId + '/hqdefault.jpg', open: function () { self.setState({ karaPlaying: k.id }); } };
+      var m = parseMedia(k.link), yt = m && m.kind === 'youtube' ? m.id : '';
+      var fav = self.isFav(k.key);
+      return {
+        artist: k.artist, title: k.title, thumb: yt ? 'https://i.ytimg.com/vi/' + yt + '/hqdefault.jpg' : '',
+        fav: fav, favLabel: (fav ? 'Retirer ' : 'Ajouter ') + k.title + (fav ? ' des favoris' : ' aux favoris'),
+        favStyle: fav ? 'color: var(--color-accent-200); border-color: var(--color-accent);' : 'color: var(--color-neutral-300); border-color: var(--color-divider);',
+        toggleFav: function (e) { e.stopPropagation(); self.toggleFav(k); },
+        // YouTube plays here; anything else opens in a new tab, and a song without a link opens a YouTube karaoké search.
+        open: function () {
+          if (yt) { self.setState({ karaPlaying: { title: k.title, artist: k.artist, ytId: yt } }); return; }
+          var href = m ? m.href : 'https://www.youtube.com/results?search_query=' + encodeURIComponent(k.title + ' ' + k.artist + ' karaoké');
+          window.open(href, '_blank', 'noopener');
+        }
+      };
     });
-    var karaNow = st.karaPlaying != null ? KARAOKE[st.karaPlaying] : null;
+    var karaNow = st.karaPlaying && st.karaPlaying.ytId ? st.karaPlaying : null;
+    var karaFilters = [['all', 'Catalogue', KARAOKE.length], ['fav', 'Favoris', favs.length]].map(function (x) {
+      return { label: x[1], count: x[2], active: (st.karaFilter || 'all') === x[0], pick: function () { self.setState({ karaFilter: x[0] }); } };
+    });
 
     // ----- Navigation -----
     var navTabs = MODE_KEYS.concat(['kara']).map(function (k) {
@@ -433,13 +596,20 @@ class App extends React.Component {
     var timerOptions = [0, 15, 30, 60].map(function (s) {
       return { label: s ? s + ' s' : 'Non', active: st.timerSec === s, pick: function () { self.setState({ timerSec: s }); } };
     });
-    var listen = setupMode === 'blind' ? ' pendant l\'écoute' : '';
-    var timerHint = st.timerSec ? 'Un compte à rebours s\'affiche à l\'écran' + listen + (CONFIG.autoReveal ? ' et la réponse est révélée à zéro.' : '. Vous révélez quand vous voulez.') : 'Pas de chrono. Vous révélez quand tout le monde a répondu.';
+    var timerHint = st.timerSec ? 'Un compte à rebours s\'affiche à l\'écran' + (CONFIG.autoReveal ? ' et la réponse est révélée à zéro.' : '. Vous révélez quand vous voulez.') : 'Pas de chrono. Vous révélez quand tout le monde a répondu.';
+    var level = st.parolesLevel || 'facile';
+    var levelOptions = PAROLES_LEVELS.map(function (l) {
+      return { label: l.label, active: level === l.key, pick: function () { self.setState({ parolesLevel: l.key }); } };
+    });
+    var noChoices = pool.filter(function (q) { return q.options.length < 2; }).length;
+    var levelHint = PAROLES_LEVELS.filter(function (l) { return l.key === level; })[0].hint +
+      (level === 'facile' && noChoices ? ' ' + noChoices + (noChoices > 1 ? ' chansons sans propositions seront jouées' : ' chanson sans propositions sera jouée') + ' en Moyen.' : '');
+    var timed = setupMode !== 'blind' && st.timerSec;
     var gameN = st.gameSize === 'all' ? pool.length : Math.min(st.gameSize, pool.length);
     var canStart = active.length > 0 && modeAll.length > 0;
     var startHint = !modeAll.length ? 'Aucune question de ce jeu pour l\'instant.'
       : !active.length ? 'Choisissez au moins un candidat.'
-      : active.length + ' candidat' + (active.length > 1 ? 's' : '') + ' · ' + gameN + ' ' + (gameN > 1 ? M.items : M.items.replace(/s$/, '')) + (curCat !== 'all' ? ' · ' + (curCat || 'Sans catégorie') : '') + (st.timerSec ? ' · ' + st.timerSec + ' s chacun' + (M.items === 'chansons' ? 'e' : '') : '');
+      : active.length + ' candidat' + (active.length > 1 ? 's' : '') + ' · ' + gameN + ' ' + (gameN > 1 ? M.items : M.items.replace(/s$/, '')) + (curCat !== 'all' ? ' · ' + (curCat || 'Sans catégorie') : '') + (setupMode === 'paroles' ? ' · ' + levelLabel(level) : '') + (timed ? ' · ' + st.timerSec + ' s chacun' + (M.items === 'chansons' ? 'e' : '') : '');
 
     // ----- Réglages: form -----
     var f = st.form;
@@ -458,12 +628,22 @@ class App extends React.Component {
         onChange: function (e) { var o = self.state.form.opts.slice(); o[i] = e.target.value; setForm({ opts: o }); }
       };
     });
+    // Paroles: opts[0] is the ending to find, opts[1…3] the wrong endings offered in easy mode.
+    var formWrong = [1, 2, 3].map(function (i) {
+      return { n: i, value: f.opts[i] || '', onChange: function (e) { var o = self.state.form.opts.slice(); o[i] = e.target.value; setForm({ opts: o }); } };
+    });
     var saveForm = function () {
       var cur = self.state.form;
       var q = { mode: cur.mode, q: cur.q.trim(), category: (cur.category || '').trim(), link: (cur.link || '').trim(), answer: '', options: [], correct: -1 };
       if (cur.mode === 'blind') { q.q = ''; q.answer = (cur.answer || '').trim(); }
+      else if (cur.mode === 'paroles') {
+        q.q = q.q ? q.q.replace(/\s*_{3,}\s*$/, '') + ' ___' : '';
+        q.options = cur.opts.slice(0, 4).map(function (o) { return (o || '').trim(); });
+        q.options = [q.options[0]].concat(q.options.slice(1).filter(Boolean));
+        q.correct = 0;
+        q.answer = (cur.answer || '').trim();
+      }
       else cur.opts.forEach(function (o, i) { var t = o.trim(); if (t) { if (i === cur.correct) q.correct = q.options.length; q.options.push(t); } });
-      if (cur.mode === 'paroles' && q.q && !/_{3,}/.test(q.q)) { self.setState({ formMsg: 'Mettez ___ à la place des mots manquants.', formOk: false }); return; }
       var problem = self.checkQuestion(q);
       if (problem) { self.setState({ formMsg: problem, formOk: false }); return; }
       if (cur.editingId) {
@@ -488,21 +668,29 @@ class App extends React.Component {
       if (st.setMode !== 'all' && q.mode !== st.setMode) return;
       if (term && (q.q + ' ' + q.options.join(' ') + ' ' + q.answer + ' ' + (q.category || '')).toLowerCase().indexOf(term) < 0) return;
       var confirming = st.confirmDelete === q.id;
-      var blind = q.mode === 'blind';
+      var blind = q.mode === 'blind', paroles = q.mode === 'paroles';
       bankView.push({
-        n: i + 1, text: blind ? q.answer : q.q, modeTag: MODES[q.mode].tag,
+        n: i + 1, text: blind ? q.answer : paroles ? fullLyric(q) : q.q, modeTag: MODES[q.mode].tag,
         category: q.category || '', hasCategory: !!q.category, shipped: !!q.shipped,
         hasLink: !!(q.link || '').trim(), linkLabel: (parseMedia(q.link) || {}).label || '',
-        hasAnswer: !blind, answer: blind ? '' : L[q.correct] + ': ' + q.options[q.correct],
-        details: blind ? 'extrait' : q.options.length + ' réponses',
+        hasAnswer: paroles ? !!q.answer : !blind, answer: blind ? '' : paroles ? q.answer : L[q.correct] + ': ' + q.options[q.correct],
+        details: blind ? 'extrait' : paroles ? (q.options.length > 1 ? q.options.length + ' fins (facile)' : 'sans propositions') : q.options.length + ' réponses',
         played: q.played ? 'jouée ' + q.played + '×' : 'jamais jouée',
         style: f.editingId === q.id ? 'background: var(--color-accent-900); box-shadow: inset 0 0 0 1px var(--color-accent-700);' : '',
         delLabel: confirming ? 'Confirmer' : 'Supprimer',
         delStyle: confirming ? 'color: var(--color-neutral-100); background: var(--color-neutral-700); border-color: var(--color-neutral-500);' : 'color: var(--color-neutral-400);',
         edit: function () {
-          var opts = q.options.slice();
+          var opts = q.options.slice(), text = q.q, correct = Math.max(0, q.correct);
+          if (paroles) {
+            // Form shape: the start of the line, then the endings with the right one first.
+            var parts = lyricParts(q.q), cut = parts.findIndex(function (p) { return p.blank; });
+            var after = parts.slice(cut + 1).map(function (p) { return p.text; }).join('');
+            text = parts.slice(0, cut).map(function (p) { return p.text; }).join('').trim();
+            opts = [opts[q.correct] || ''].concat(opts.filter(function (_, k) { return k !== q.correct; })).map(function (o) { return o ? (o + after).trim() : ''; });
+            correct = 0;
+          }
           while (opts.length < 4) opts.push('');
-          self.setState({ panel: 'form', form: { editingId: q.id, mode: q.mode, q: q.q, category: q.category || '', link: q.link || '', answer: q.answer || '', opts: opts, correct: Math.max(0, q.correct) }, formMsg: '', confirmDelete: null });
+          self.setState({ panel: 'form', form: { editingId: q.id, mode: q.mode, q: text, category: q.category || '', link: q.link || '', answer: q.answer || '', opts: opts, correct: correct }, formMsg: '', confirmDelete: null });
         },
         del: function () {
           if (self.state.confirmDelete !== q.id) { self.setState({ confirmDelete: q.id }); return; }
@@ -524,6 +712,13 @@ class App extends React.Component {
     var gq = st.gameQs;
     var q = gq[st.qIndex] || { mode: gm, q: '', options: [], correct: 0, answer: '' };
     var isBlind = q.mode === 'blind', isParoles = q.mode === 'paroles';
+    var marks = this.marksOnly(q);
+    var phase = st.blindPhase || 'ready';
+    var elapsed = isBlind ? this.blindElapsed() : 0;
+    var buzz = st.buzz || {};
+    var buzzed = players.filter(function (p) { return buzz[p.id] != null; }).length;
+    var clock = function (ms) { var s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+    var ptsLabel = function (n) { return n + (n > 1 ? ' pts' : ' pt'); };
     var pickCounts = q.options.map(function () { return 0; });
     var answered = 0;
     players.forEach(function (p) { var k = st.picks[p.id]; if (k !== undefined && k !== null) { answered++; if (pickCounts[k] !== undefined) pickCounts[k]++; } });
@@ -545,12 +740,18 @@ class App extends React.Component {
       var has = pick !== undefined && pick !== null;
       var ok = has && self.isRight(q, pick);
       var result, resultStyle = 'color: var(--color-neutral-500);', rowStyle = '';
+      var hasBuzz = isBlind && buzz[p.id] != null;
+      var worth = hasBuzz ? blindPoints(buzz[p.id]) : 1;
       if (st.revealed) {
         var delay = (0.3 + pi * 0.05).toFixed(2) + 's';
-        if (ok) { result = isBlind ? 'Trouvé  +1' : 'Bonne réponse  +1'; resultStyle = 'color: ' + GOOD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + GOOD + ' 16%, var(--color-surface)); box-shadow: inset 0 0 0 1px ' + GOOD + '; animation: qpPop .5s ease-out ' + delay + ' both;'; }
-        else if (has) { result = isBlind ? 'Raté' : 'Mauvaise réponse'; resultStyle = 'color: ' + BAD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + BAD + ' 12%, var(--color-surface)); box-shadow: inset 0 0 0 1px color-mix(in oklch, ' + BAD + ' 65%, transparent); animation: qpShake .45s ease-out ' + delay + ' both;'; }
-        else result = isBlind ? 'Pas noté' : 'Pas de réponse';
-      } else result = isBlind ? (pick === true ? 'Trouvé' : pick === false ? 'Raté' : 'À noter…') : (has ? 'A répondu' : 'En attente…');
+        if (ok && (!isBlind || hasBuzz)) { result = (marks ? 'Trouvé' : 'Bonne réponse') + '  +' + worth; resultStyle = 'color: ' + GOOD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + GOOD + ' 16%, var(--color-surface)); box-shadow: inset 0 0 0 1px ' + GOOD + '; animation: qpPop .5s ease-out ' + delay + ' both;'; }
+        else if (has) { result = marks ? 'Raté' : 'Mauvaise réponse'; resultStyle = 'color: ' + BAD_L + ';'; rowStyle = 'background: color-mix(in oklch, ' + BAD + ' 12%, var(--color-surface)); box-shadow: inset 0 0 0 1px color-mix(in oklch, ' + BAD + ' 65%, transparent); animation: qpShake .45s ease-out ' + delay + ' both;'; }
+        else result = isBlind ? (hasBuzz ? 'Pas noté' : 'N\'a pas buzzé') : marks ? 'Pas noté' : 'Pas de réponse';
+      } else if (isBlind) {
+        result = hasBuzz ? 'Buzz à ' + clock(buzz[p.id]) + (pick === true ? ' · Trouvé' : pick === false ? ' · Raté' : phase === 'stopped' ? ' · à vérifier' : '')
+          : phase === 'playing' ? 'Touchez pour buzzer' : phase === 'ready' ? 'Attend le Play' : 'N\'a pas buzzé';
+        if (hasBuzz) { resultStyle = 'color: var(--color-accent-200);'; rowStyle = 'box-shadow: inset 0 0 0 1px var(--color-accent-700); background: var(--color-accent-900);'; }
+      } else result = marks ? (pick === true ? 'Trouvé' : pick === false ? 'Raté' : 'À noter…') : (has ? 'A répondu' : 'En attente…');
       var setPick = function (val) {
         if (self.state.revealed) return;
         var np = Object.assign({}, self.state.picks);
@@ -558,7 +759,8 @@ class App extends React.Component {
         self.setState({ picks: np });
       };
       var buttons;
-      if (isBlind) {
+      if (isBlind && (!hasBuzz || phase === 'playing')) buttons = [];
+      else if (marks) {
         buttons = [[true, '✓', 'a trouvé'], [false, '✗', 'n\'a pas trouvé']].map(function (b) {
           var picked = pick === b[0], style;
           if (!st.revealed) style = picked ? (b[0] ? 'border-color: ' + GOOD + '; color: var(--color-bg); background: ' + GOOD + ';' : 'border-color: ' + BAD + '; color: ' + BAD_L + '; background: color-mix(in oklch, ' + BAD + ' 30%, var(--color-surface));') : OFF;
@@ -576,17 +778,32 @@ class App extends React.Component {
           return { letter: L[i], label: p.name + ' répond ' + L[i], pressed: picked, style: style, pick: function () { setPick(i); } };
         });
       }
-      return { name: p.name, result: result, resultStyle: resultStyle, style: rowStyle, buttons: buttons };
+      var canBuzz = isBlind && !st.revealed && phase === 'playing';
+      return {
+        name: p.name, result: result, resultStyle: resultStyle, style: rowStyle + (canBuzz ? ' cursor: pointer;' : ''), buttons: buttons,
+        canBuzz: canBuzz, buzzLabel: hasBuzz ? 'Annuler le buzz de ' + p.name : p.name + ' buzze',
+        buzz: function () { self.buzzPlayer(p.id); },
+        hasBadge: hasBuzz && !st.revealed, badge: ptsLabel(worth)
+      };
     });
     var isLast = st.qIndex + 1 >= gq.length;
     var media = st.screen === 'play' && st.revealed && !isBlind ? parseMedia(q.link) : null;
     var ranking = this.ranked(players, st.scores);
     var blindMedia = st.screen === 'play' && isBlind ? parseMedia(q.link) : null;
-    var lyric = isParoles ? lyricParts(q.q).map(function (p) {
-      return p.blank
-        ? { blank: true, text: st.revealed ? q.options[q.correct] : '', style: st.revealed ? 'color: ' + GOOD_L + '; border-bottom-color: ' + GOOD + '; text-shadow: 0 0 24px color-mix(in oklch, ' + GOOD + ' 60%, transparent); animation: qpPop .6s ease-out .1s both;' : '' }
+    var lyric = isParoles ? parolesParts(q, q.level || 'facile').map(function (p) {
+      return p.hidden
+        ? { blank: true, text: st.revealed ? p.text : p.long ? '…' : '', style: st.revealed ? 'color: ' + GOOD_L + '; border-bottom-color: ' + GOOD + '; text-shadow: 0 0 24px color-mix(in oklch, ' + GOOD + ' 60%, transparent); animation: qpPop .6s ease-out .1s both;' : p.long ? 'min-width: 6ch;' : '' }
         : { blank: false, text: p.text };
     }) : [];
+    var favItem = isParoles ? this.favFromQuestion(q) : null;
+    var qFav = favItem ? this.isFav(favItem.key) : false;
+    var tier = blindPoints(elapsed);
+    var blindTiers = [4, 3, 2, 1].map(function (n, i) {
+      var on = tier === n, past = elapsed >= (i + 1) * 15000;
+      return { label: ptsLabel(n), range: (i * 15) + '–' + ((i + 1) * 15) + ' s',
+        style: on ? 'background: var(--color-accent-800); color: var(--color-accent-100); box-shadow: inset 0 0 0 1px var(--color-accent), 0 0 18px color-mix(in srgb, var(--color-accent) 35%, transparent);'
+          : past ? 'color: var(--color-neutral-600); box-shadow: inset 0 0 0 1px var(--color-neutral-800);' : 'color: var(--color-neutral-300); box-shadow: inset 0 0 0 1px var(--color-divider);' };
+    });
 
     var hasTimer = st.screen === 'play' && !!st.qDeadline && st.timerSec > 0;
     var remainMs = hasTimer ? Math.max(0, st.qDeadline - Date.now()) : 0;
@@ -600,16 +817,20 @@ class App extends React.Component {
       var lead = !hideScores && s.rank === 1 && s.score > 0;
       return {
         rank: s.rank, name: s.name, score: s.score, gain: !hideScores && st.revealed && !!st.lastGain[s.id],
+        gainLabel: '+' + (typeof st.lastGain[s.id] === 'number' ? st.lastGain[s.id] : 1),
         style: lead ? 'background: var(--color-accent-900); box-shadow: inset 0 0 0 1px var(--color-accent-700);' : 'background: color-mix(in srgb, var(--color-bg) 60%, transparent);'
       };
     });
 
     var recap = gq.map(function (x, i) {
       var r = st.results[i];
-      var blind = x.mode === 'blind';
-      return { n: i + 1, q: blind ? x.answer : x.q, answer: blind ? (x.category || 'Blind test') : L[x.correct] + ': ' + x.options[x.correct], hits: r ? r.hits + '/' + r.of : '–', rate: r && r.of ? r.hits / r.of : 1 };
+      var blind = x.mode === 'blind', paroles = x.mode === 'paroles';
+      return { n: i + 1, q: blind ? x.answer : paroles ? fullLyric(x) : x.q,
+        answer: blind ? (x.category || 'Blind test') : paroles ? (x.answer || levelLabel(x.level)) : L[x.correct] + ': ' + x.options[x.correct],
+        hits: r ? r.hits + '/' + r.of : '–', rate: r && r.of ? r.hits / r.of : 1 };
     });
-    var rankAll = ranking.map(function (r) { return { rank: r.rank, name: r.name, score: r.score, pct: gq.length ? Math.round(r.score / gq.length * 100) : 0 }; });
+    var maxPts = gq.length * (gm === 'blind' ? 4 : 1);
+    var rankAll = ranking.map(function (r) { return { rank: r.rank, name: r.name, score: r.score, pct: maxPts ? Math.round(r.score / maxPts * 100) : 0 }; });
     var podH = [150, 110, 80];
     var podium = [1, 0, 2].filter(function (i) { return rankAll[i]; }).map(function (i) {
       var r = rankAll[i];
@@ -649,8 +870,10 @@ class App extends React.Component {
       karaStop: function (e) { e.stopPropagation(); },
       karaSearch: st.karaSearch,
       onKaraSearch: function (e) { self.setState({ karaSearch: e.target.value }); },
-      karaCount: karaView.length === KARAOKE.length ? KARAOKE.length : karaView.length + ' / ' + KARAOKE.length,
-      karaEmpty: karaView.length === 0,
+      karaFilters: karaFilters,
+      karaCount: karaView.length === karaSource.length ? karaSource.length : karaView.length + ' / ' + karaSource.length,
+      karaEmpty: karaView.length === 0 && (!showFavs || favs.length > 0),
+      karaNoFavs: showFavs && favs.length === 0,
       karaView: karaView,
 
       // setup
@@ -677,6 +900,11 @@ class App extends React.Component {
       sizeOptions: sizeOptions,
       timerOptions: timerOptions,
       timerHint: timerHint,
+      showTimer: setupMode !== 'blind',
+      showLevels: setupMode === 'paroles',
+      levelOptions: levelOptions,
+      levelHint: levelHint,
+      showBlindRules: setupMode === 'blind',
       startHint: startHint,
       modeEmpty: modeAll.length === 0,
       addFirstLabel: 'Ajoutez d\'abord des ' + M.empty,
@@ -693,12 +921,16 @@ class App extends React.Component {
       formTitle: f.editingId ? 'Modifier la question' : 'Nouvelle question',
       formModes: formModes,
       formBlind: fBlind,
-      formNotBlind: !fBlind,
-      formQLabel: fParoles ? 'Paroles' : 'Question',
-      formQPlaceholder: fParoles ? 'Une ligne de la chanson, avec ___ à la place des mots manquants' : 'Saisissez la question',
-      formOptsLabel: fParoles ? 'Fins possibles · touchez la lettre de la bonne' : 'Réponses · touchez la lettre de la bonne réponse',
+      formParoles: fParoles,
+      formQuiz: !fBlind && !fParoles,
+      formQLabel: 'Question',
+      formQPlaceholder: 'Saisissez la question',
+      formOptsLabel: 'Réponses · touchez la lettre de la bonne réponse',
+      formEnd: f.opts[0] || '',
+      onFormEnd: function (e) { var o = self.state.form.opts.slice(); o[0] = e.target.value; setForm({ opts: o }); },
+      formWrong: formWrong,
       formLinkLabel: fBlind ? 'Lien YouTube ou Spotify' : 'Lien',
-      formLinkHelp: fBlind ? '(obligatoire ; ajoutez &t=42 pour démarrer à 0:42)' : '(facultatif, affiché après la révélation)',
+      formLinkHelp: fBlind ? '(obligatoire ; ajoutez &t=42 pour démarrer à 0:42)' : fParoles ? '(facultatif : joué à la révélation et repris dans les favoris karaoké)' : '(facultatif, affiché après la révélation)',
       formQ: f.q,
       onFormQ: function (e) { setForm({ q: e.target.value }); },
       formAnswer: f.answer || '',
@@ -758,23 +990,39 @@ class App extends React.Component {
       unitLabel: unit,
       qNumber: st.qIndex + 1,
       qTotal: gq.length,
-      qKicker: unit + ' ' + (st.qIndex + 1) + (q.category ? ' · ' + q.category : ''),
+      qKicker: unit + ' ' + (st.qIndex + 1) + (isParoles ? ' · ' + levelLabel(q.level) : '') + (q.category ? ' · ' + q.category : ''),
       isQuizQ: !isBlind && !isParoles,
       isParolesQ: isParoles,
       isBlindQ: isBlind,
-      hasOptions: !isBlind,
+      hasOptions: !marks,
       qText: q.q,
       lyric: lyric,
+      parolesSong: isParoles && st.revealed && q.answer ? q.answer : '',
+      showFav: isParoles && st.revealed,
+      favLabel: qFav ? '★ Dans les favoris karaoké' : '☆ Favori karaoké',
+      favPressed: qFav,
+      favStyle: qFav ? 'color: var(--color-accent-100); border-color: var(--color-accent); background: var(--color-accent-800);' : '',
+      toggleQFav: function () { if (favItem) self.toggleFav(favItem); },
       blindTitle: st.revealed ? q.answer : 'Quel est ce titre ?',
       blindTitleStyle: st.revealed ? 'color: ' + GOOD_L + '; text-shadow: 0 0 36px color-mix(in oklch, ' + GOOD + ' 55%, transparent); animation: qpPop .6s ease-out .1s both;' : '',
-      blindPlayer: blindMedia ? React.createElement(MediaPlayer, { key: 'clip' + st.qIndex + '-' + q.id, media: blindMedia, hidden: !st.revealed, autoPlay: true }) : null,
+      blindPlayer: blindMedia ? React.createElement(MediaPlayer, { key: 'clip' + st.qIndex + '-' + q.id, media: blindMedia, hidden: !st.revealed, play: phase === 'playing' || st.revealed, controls: st.revealed }) : null,
       blindNoMedia: isBlind && !blindMedia,
+      blindClock: clock(elapsed),
+      blindClockStyle: phase === 'playing' ? 'color: var(--color-text);' : 'color: var(--color-neutral-400);',
+      blindTiers: blindTiers,
+      showBlindClock: isBlind && !st.revealed,
+      blindReady: isBlind && !st.revealed && phase === 'ready',
+      blindPlaying: isBlind && !st.revealed && phase === 'playing',
+      blindStopped: isBlind && !st.revealed && phase === 'stopped',
+      blindCanResume: elapsed < BLIND_MAX_MS,
+      blindPlay: function () { self.blindPlay(); },
+      blindStop: function () { self.blindStop(); },
       optionsView: optionsView,
       rows: rows,
-      answeredLabel: answered + ' / ' + players.length + (isBlind ? ' notés' : ' ont répondu'),
-      spaceAction: st.revealed ? 'continuer' : 'révéler',
+      answeredLabel: isBlind ? buzzed + ' / ' + players.length + ' ont buzzé' : answered + ' / ' + players.length + (marks ? ' notés' : ' ont répondu'),
+      spaceAction: st.revealed ? 'continuer' : isBlind && phase === 'ready' ? 'lancer l\'extrait' : isBlind && phase === 'playing' ? 'arrêter et vérifier' : 'révéler',
       revealed: st.revealed,
-      notRevealed: !st.revealed,
+      notRevealed: !st.revealed && (!isBlind || phase === 'stopped'),
       reveal: function () { self.doReveal(); },
       nextLabel: isLast ? 'Classement final' : (isBlind ? 'Extrait suivant' : isParoles ? 'Chanson suivante' : 'Question suivante'),
       next: function () { self.doNext(); },
@@ -803,6 +1051,7 @@ class App extends React.Component {
       winnerName: ranking.filter(function (r) { return r.rank === 1; }).map(function (r) { return r.name; }).join(' et '),
       podium: podium,
       restRanking: rankAll.slice(3),
+      ptsTotal: maxPts,
       stage: this.renderStage(st.screen === 'end' ? 'end' : st.screen === 'play' ? (st.revealed ? 'reveal' : 'play') : 'idle', st.qIndex),
       recap: recap,
       recapTitle: gm === 'blind' ? 'Récap des extraits' : gm === 'paroles' ? 'Récap des chansons' : 'Récap des questions',

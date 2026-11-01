@@ -4,6 +4,9 @@
  * gives the song away — used by the blind test. Uses the official YouTube and Spotify embed APIs.
  *
  *   React.createElement(MediaPlayer, { media: parseMedia(link), hidden: true, autoPlay: true })
+ *
+ * Controlled by the app instead (blind test): pass `play` (true / false) and `controls: false`;
+ * the clip plays or pauses whenever `play` changes.
  */
 (function () {
   var ytReady = null, spReady = null;
@@ -48,6 +51,23 @@
       this.replay = this.replay.bind(this);
     }
 
+    wantsPlay() { return this.props.play != null ? !!this.props.play : !!this.props.autoPlay; }
+
+    // Plays or pauses to match the `play` prop. Spotify's first play() loads the track; later ones resume it.
+    applyPlay() {
+      var m = this.props.media, on = this.wantsPlay();
+      if (this.yt && this.yt.playVideo) { if (on) this.yt.playVideo(); else this.yt.pauseVideo(); }
+      else if (this.sp) {
+        if (on && !this.started) { this.started = true; this.sp.play(); if (m && m.start) this.sp.seek(m.start); }
+        else if (on) this.sp.resume();
+        else if (this.started) this.sp.pause();
+      }
+    }
+
+    componentDidUpdate(prev) {
+      if (prev.play !== this.props.play && this.state.ready) this.applyPlay();
+    }
+
     componentDidMount() {
       var self = this, m = this.props.media;
       if (!m) return;
@@ -59,7 +79,7 @@
           if (self.dead) return;
           self.yt = new YT.Player(mount, {
             width: '100%', height: '100%', videoId: m.id,
-            playerVars: { start: m.start || 0, autoplay: self.props.autoPlay ? 1 : 0, rel: 0, playsinline: 1, modestbranding: 1 },
+            playerVars: { start: m.start || 0, autoplay: self.wantsPlay() ? 1 : 0, rel: 0, playsinline: 1, modestbranding: 1 },
             events: {
               onReady: function () { if (!self.dead) self.setState({ ready: true }); },
               onStateChange: function (e) { if (!self.dead) self.setState({ playing: e.data === 1 || e.data === 3 }); }
@@ -75,7 +95,7 @@
             c.addListener('ready', function () {
               if (self.dead) return;
               self.setState({ ready: true });
-              if (self.props.autoPlay) { c.play(); if (m.start) c.seek(m.start); }
+              if (self.wantsPlay()) self.applyPlay();
             });
             c.addListener('playback_update', function (e) { if (!self.dead) self.setState({ playing: !e.data.isPaused }); });
           });
@@ -91,7 +111,7 @@
 
     togglePlay() {
       if (this.yt && this.yt.getPlayerState) { if (this.state.playing) this.yt.pauseVideo(); else this.yt.playVideo(); }
-      else if (this.sp) this.sp.togglePlay();
+      else if (this.sp) { if (!this.started) { this.started = true; this.sp.play(); } else this.sp.togglePlay(); }
     }
 
     replay() {
@@ -111,15 +131,15 @@
 <div style="display: flex; align-items: flex-end; gap: 7px; height: 96px">
 ${BARS.map(function (b, i) { return html`<span key=${i} style="width: 12px; height: ${Math.round(b * 96)}px; border-radius: 6px 6px 2px 2px; background: linear-gradient(to top, var(--color-accent-600), var(--color-accent-300)); box-shadow: 0 0 14px color-mix(in srgb, var(--color-accent) 50%, transparent); transform-origin: bottom; animation: qpEq ${0.7 + (i % 4) * 0.18}s ease-in-out ${(i % 5) * 0.11}s infinite alternate; animation-play-state: ${st.playing ? 'running' : 'paused'}"></span>`; })}
 </div>
-<span style="font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-300)">${st.failed ? 'Lecteur indisponible' : st.playing ? 'Écoutez bien…' : st.ready ? 'En pause' : 'Chargement…'}</span>
+<span style="font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--color-accent-300)">${st.failed ? 'Lecteur indisponible' : st.playing ? 'Écoutez bien…' : !st.ready ? 'Chargement…' : this.wantsPlay() || this.started ? 'En pause' : 'Prêt'}</span>
 </div>
 </div>
-<div style="display: flex; gap: 8px">
+${p.controls === false ? null : html`<div style="display: flex; gap: 8px">
 <button class="btn btn-secondary" onClick=${this.togglePlay} disabled=${!st.ready} style="height: 44px; padding: 0 18px; font-size: 15px; gap: 8px">${st.playing
   ? html`<svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><rect x="56" y="40" width="48" height="176" rx="8"></rect><rect x="152" y="40" width="48" height="176" rx="8"></rect></svg>`
   : html`<svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M72 39.9v176.2a8 8 0 0 0 12.2 6.8l144-88.1a8 8 0 0 0 0-13.6l-144-88.1A8 8 0 0 0 72 39.9z"></path></svg>`}${st.playing ? 'Pause' : 'Lecture'}</button>
 <button class="btn btn-secondary" onClick=${this.replay} disabled=${!st.ready} style="height: 44px; padding: 0 18px; font-size: 15px; gap: 8px"><svg width="16" height="16" viewBox="0 0 256 256" fill="none" stroke="currentColor" strokeWidth="20" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M40 128a88 88 0 1 0 26-62.5L40 92"></path><path d="M40 44v48h48"></path></svg>Réécouter</button>
-</div>
+</div>`}
 </div>`;
     }
   }

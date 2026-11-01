@@ -70,7 +70,7 @@ ${v.rosterView.map((p, pI) => html`
 </div>
 </section>
 
-<section class="card elev-sm" style="background: color-mix(in srgb, var(--color-surface) 72%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); width: 380px; flex-shrink: 0; padding: 22px; gap: 20px">
+<section class="card elev-sm" style="background: color-mix(in srgb, var(--color-surface) 72%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); width: 380px; flex-shrink: 0; min-height: 0; overflow-y: auto; padding: 22px; gap: 20px">
 <div style="display: flex; flex-direction: column; gap: 2px">
 <div class="card-kicker">${v.modeTitle}</div>
 <h2 style="margin: 0; font-size: 25px">Le prime du soir</h2>
@@ -92,6 +92,29 @@ ${v.sizeOptions.map((s, sI) => html`
 </div>
 <p class="text-muted" style="margin: 0; font-size: 13px; line-height: 1.45">Tirées au hasard, les moins jouées d'abord, pour que chaque partie reste inédite.</p>
 </div>
+${v.showLevels ? html`
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div class="card-kicker">Difficulté</div>
+<div class="seg" role="radiogroup" aria-label="Difficulté" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+${v.levelOptions.map((l, lI) => html`
+<label key=${lI} class="seg-opt" style="justify-content: center; text-align: center; height: 42px; font-size: 13px; line-height: 1.1; padding: 0 4px"><input type="radio" name="qp-level" checked=${l.active} onChange=${l.pick} />${l.label}</label>
+`)}
+</div>
+<p class="text-muted" style="margin: 0; font-size: 13px; line-height: 1.45">${v.levelHint}</p>
+</div>
+` : null}
+${v.showBlindRules ? html`
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div class="card-kicker">Points</div>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+${[['4 pts', '0–15 s'], ['3 pts', '15–30 s'], ['2 pts', '30–45 s'], ['1 pt', '45–60 s']].map((t, tI) => html`
+<div key=${tI} style="display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--color-divider)"><span style="font-size: 16px; font-weight: 500">${t[0]}</span><span style="font-size: 12px; color: var(--color-neutral-400)">${t[1]}</span></div>
+`)}
+</div>
+<p class="text-muted" style="margin: 0; font-size: 13px; line-height: 1.45">Le chrono part de 0 quand vous cliquez sur Play. Touchez le nom d'un candidat quand il buzze : il garde les points du moment. Arrêtez pour vérifier, marquez ✓ ou ✗, et les points sont comptés.</p>
+</div>
+` : null}
+${v.showTimer ? html`
 <div style="display: flex; flex-direction: column; gap: 8px">
 <div class="card-kicker">Temps par question</div>
 <div class="seg" role="radiogroup" aria-label="Temps par question" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
@@ -101,6 +124,7 @@ ${v.timerOptions.map((t, tI) => html`
 </div>
 <p class="text-muted" style="margin: 0; font-size: 13px; line-height: 1.45">${v.timerHint}</p>
 </div>
+` : null}
 <div style="flex-grow: 1"></div>
 <div style="display: flex; flex-direction: column; gap: 10px">
 <p style="margin: 0; font-size: 15px; color: var(--color-neutral-300)">${v.startHint}</p>
@@ -143,6 +167,36 @@ ${v.hasFormLinkHint ? html`
 <label for="qp-ans">Réponse <span style="color: var(--color-neutral-500)">(titre, artiste)</span></label>
 <input id="qp-ans" class="input" type="text" value=${v.formAnswer} onChange=${v.onFormAnswer} placeholder="ex. Tourner dans le vide, Indila" style="height: 44px; font-size: 15px; background: var(--color-bg)" />
 </div>
+` : v.formParoles ? html`
+<div class="field">
+<label for="qp-q">Début des paroles <span style="color: var(--color-neutral-500)">(affiché aux candidats)</span></label>
+<textarea id="qp-q" class="input" value=${v.formQ} onChange=${v.onFormQ} placeholder="ex. Et je m'en vais" style="min-height: 64px; height: 64px; resize: none; font-size: 16px; background: var(--color-bg)"></textarea>
+</div>
+<div class="field">
+<label for="qp-end">Suite à trouver <span style="color: var(--color-neutral-500)">(la fin de la phrase)</span></label>
+<input id="qp-end" class="input" type="text" value=${v.formEnd} onChange=${v.onFormEnd} placeholder="ex. au bout de mes rêves" style="height: 44px; font-size: 15px; background: var(--color-bg)" />
+<span style="font-size: 12px; color: var(--color-neutral-500)">Moyen : le dernier mot est caché. Difficile : les 3 ou 4 derniers. Très difficile : toute la suite.</span>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px">
+<div style="font-size: 12px; color: var(--color-neutral-400)">Fausses suites · proposées en mode facile (facultatif)</div>
+${v.formWrong.map((w) => html`
+<div key=${w.n}>
+<label for="qp-wrong-${w.n}" class="qp-sr">Fausse suite ${w.n}</label>
+<input id="qp-wrong-${w.n}" class="input" type="text" value=${w.value} onChange=${w.onChange} placeholder="Fausse suite ${w.n}" style="width: 100%; box-sizing: border-box; height: 40px; font-size: 15px; background: var(--color-bg)" />
+</div>
+`)}
+</div>
+<div class="field">
+<label for="qp-song">Chanson <span style="color: var(--color-neutral-500)">(titre, artiste — pour les favoris karaoké)</span></label>
+<input id="qp-song" class="input" type="text" value=${v.formAnswer} onChange=${v.onFormAnswer} placeholder="ex. Tourner dans le vide, Indila" style="height: 44px; font-size: 15px; background: var(--color-bg)" />
+</div>
+<div class="field">
+<label for="qp-link">${v.formLinkLabel} <span style="color: var(--color-neutral-500)">${v.formLinkHelp}</span></label>
+<input id="qp-link" class="input" type="url" value=${v.formLink} onChange=${v.onFormLink} placeholder="YouTube, Spotify ou tout autre lien" style="height: 44px; font-size: 15px; background: var(--color-bg)" />
+${v.hasFormLinkHint ? html`
+<span style="font-size: 12px; color: var(--color-accent-300)">${v.formLinkHint}</span>
+` : null}
+</div>
 ` : html`
 <div class="field">
 <label for="qp-q">${v.formQLabel}</label>
@@ -154,7 +208,7 @@ ${v.hasFormLinkHint ? html`
 <input id="qp-cat" class="input" type="text" list="qp-cats" value=${v.formCat} onChange=${v.onFormCat} placeholder="ex. Musique, Cinéma (facultatif)" style="height: 44px; font-size: 15px; background: var(--color-bg)" />
 <datalist id="qp-cats">${v.catNames.map((c, cI) => html`<option key=${cI} value=${c.name}></option>`)}</datalist>
 </div>
-${v.formNotBlind ? html`
+${v.formQuiz ? html`
 <div style="display: flex; flex-direction: column; gap: 10px">
 <div style="font-size: 12px; color: var(--color-neutral-400)">${v.formOptsLabel}</div>
 ${v.formOpts.map((o, oI) => html`
@@ -189,7 +243,7 @@ ${v.hasFormMsg ? html`
 ${v.panelImport ? html`
 <div style="flex-grow: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px">
 <h3 style="margin: 0; font-size: 22px">Importer depuis un CSV / Sheets</h3>
-<p style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-neutral-300)">Colonnes : Question, A, B, (C, D…), Réponse. Réponse = une lettre (B), un chiffre (2) ou le texte exact. Avec une ligne d'en-tête, ajoutez des colonnes Catégorie, Lien et Mode (Quiz, Paroles ou Blind test ; vide = Quiz). Pour le blind test : Lien + Réponse (titre, artiste). Collez directement des cellules Google Sheets ou importez un fichier .csv.</p>
+<p style="margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-neutral-300)">Colonnes : Question, A, B, (C, D…), Réponse. Réponse = une lettre (B), un chiffre (2) ou le texte exact. Avec une ligne d'en-tête, ajoutez des colonnes Catégorie, Lien et Mode (Quiz, Paroles ou Blind test ; vide = Quiz). Pour les paroles : Question = le début suivi de ___, A = la suite à trouver, B à D = fausses suites (facultatives), Chanson = titre, artiste. Pour le blind test : Lien + Réponse (titre, artiste). Collez directement des cellules Google Sheets ou importez un fichier .csv.</p>
 <label class="btn btn-secondary" style="align-self: flex-start; height: 38px; padding: 0 14px">
 <svg width="16" height="16" viewBox="0 0 256 256" fill="none" stroke="currentColor" strokeWidth="16" strokeLinecap="round" strokeLinejoin="round"><path d="M128 152V40M88 80l40-40 40 40M216 152v56a8 8 0 0 1-8 8H48a8 8 0 0 1-8-8v-56"></path></svg>Choisir un fichier CSV<input class="qp-sr" type="file" accept=".csv,.tsv,.txt,text/csv" onChange=${v.onFile} /></label>
 <label for="qp-csv" class="qp-sr">Coller des questions</label>
@@ -251,7 +305,14 @@ ${v.isKara ? html`
 <div style="flex-grow: 1; min-height: 0; padding: 12px 32px 32px; display: flex; position: relative; z-index: 1">
 <section class="card elev-sm" style="background: color-mix(in srgb, var(--color-surface) 72%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); flex-grow: 1; min-width: 0; min-height: 0; padding: 22px; gap: 16px">
 <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 16px">
 <h2 style="margin: 0; font-size: 25px">Karaoké <span style="color: var(--color-neutral-500)">${v.karaCount}</span></h2>
+<div class="seg" role="radiogroup" aria-label="Catalogue ou favoris">
+${v.karaFilters.map((f, fI) => html`
+<label key=${fI} class="seg-opt" style="gap: 6px"><input type="radio" name="qp-kara-filter" checked=${f.active} onChange=${f.pick} />${f.label}<span style="font-size: 12px; color: var(--color-neutral-400)">${f.count}</span></label>
+`)}
+</div>
+</div>
 <label for="qp-kara-search" class="qp-sr">Rechercher un artiste ou une chanson</label>
 <input id="qp-kara-search" class="input" type="search" placeholder="Artiste ou chanson" value=${v.karaSearch} onChange=${v.onKaraSearch} style="width: 280px; max-width: 100%; height: 38px; background: var(--color-bg)" />
 </div>
@@ -259,9 +320,13 @@ ${v.isKara ? html`
 ${v.karaEmpty ? html`
 <p class="text-muted" style="margin: 0; font-size: 15px">Aucun titre ne correspond à « ${v.karaSearch} ».</p>
 ` : null}
+${v.karaNoFavs ? html`
+<p class="text-muted" style="margin: 0; font-size: 15px">Pas encore de favoris. Touchez l'étoile d'un titre du catalogue, ou ajoutez une chanson après sa révélation dans N'oubliez pas les paroles.</p>
+` : null}
 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 18px 16px; padding-bottom: 8px">
 ${v.karaView.map((k, kI) => html`
-<button key=${kI} type="button" onClick=${k.open} aria-label="Lancer ${k.title} de ${k.artist}" style="all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 8px; border-radius: var(--radius-md); padding: 6px; margin: -6px" data-hover>
+<div key=${kI} style="position: relative; display: flex">
+<button type="button" onClick=${k.open} aria-label="Lancer ${k.title} de ${k.artist}" style="all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 8px; border-radius: var(--radius-md); padding: 6px; margin: -6px; flex-grow: 1; min-width: 0" data-hover>
 <div style="position: relative; aspect-ratio: 16 / 9; border-radius: var(--radius-md); overflow: hidden; background: linear-gradient(135deg, var(--color-accent-900), var(--color-neutral-900)); border: 1px solid var(--color-divider)">
 <img onError=${hideBrokenImage} src=${k.thumb} alt="" loading="lazy" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover" />
 <span style="position: absolute; left: 8px; bottom: 8px; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--color-bg) 70%, transparent); border: 1px solid var(--color-accent); color: var(--color-accent-200)"><svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M3 1.5v9l7.5-4.5z"></path></svg></span>
@@ -271,6 +336,8 @@ ${v.karaView.map((k, kI) => html`
 <div style="font-size: 13px; color: var(--color-neutral-400)">${k.artist}</div>
 </div>
 </button>
+<button type="button" class="btn" onClick=${k.toggleFav} aria-pressed=${k.fav} aria-label=${k.favLabel} title=${k.favLabel} style="position: absolute; top: 6px; right: 6px; width: 34px; height: 34px; padding: 0; font-size: 18px; border-radius: 50%; background: color-mix(in srgb, var(--color-bg) 72%, transparent); border: 1px solid; ${k.favStyle}">${k.fav ? '★' : '☆'}</button>
+</div>
 `)}
 </div>
 </div>
@@ -309,6 +376,7 @@ ${v.isParolesQ ? html`
 <p style="margin: 0; font-size: 46px; line-height: 1.3; font-weight: 500; font-style: italic; text-wrap: balance; max-width: 26ch; text-shadow: 0 0 36px color-mix(in srgb, var(--color-accent) 40%, transparent)"><span aria-hidden="true" style="color: var(--color-accent-300)">« </span>${v.lyric.map((p, pI) => p.blank
   ? html`<span key=${pI} style="display: inline-block; min-width: 4ch; padding: 0 8px; margin: 0 4px; border-bottom: 3px solid var(--color-accent); color: var(--color-accent-200); font-style: normal; background: color-mix(in srgb, var(--color-accent) 14%, transparent); border-radius: 6px 6px 0 0; transition: color .4s, border-color .4s; ${p.style}">${p.text || ' '}</span>`
   : html`<span key=${pI}>${p.text}</span>`)}<span aria-hidden="true" style="color: var(--color-accent-300)"> »</span></p>
+${v.parolesSong ? html`<p style="margin: 0; font-size: 18px; color: var(--color-neutral-300); animation: qpFloat .5s ease-out .3s both">${v.parolesSong}</p>` : null}
 ` : null}
 ${v.isBlindQ ? html`
 <h1 style="margin: 0; font-size: 42px; line-height: 1.15; text-wrap: balance; max-width: 28ch; transition: color .4s; text-shadow: 0 0 36px color-mix(in srgb, var(--color-accent) 40%, transparent); ${v.blindTitleStyle}">${v.blindTitle}</h1>
@@ -319,6 +387,16 @@ ${v.isBlindQ ? html`
 ${v.blindPlayer}
 ${v.blindNoMedia ? html`<p class="text-muted" style="margin: auto; font-size: 15px">Lien manquant ou illisible pour cet extrait.</p>` : null}
 </div>
+${v.showBlindClock ? html`
+<div style="flex-shrink: 0; display: flex; align-items: center; justify-content: center; gap: 20px">
+<div aria-live="off" style="font-size: 44px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; ${v.blindClockStyle}">${v.blindClock}</div>
+<div style="display: flex; gap: 6px">
+${v.blindTiers.map((t, tI) => html`
+<div key=${tI} style="display: flex; flex-direction: column; align-items: center; padding: 6px 12px; border-radius: var(--radius-md); transition: background .3s, color .3s; ${t.style}"><span style="font-size: 17px; font-weight: 500">${t.label}</span><span style="font-size: 11px; opacity: .8">${t.range}</span></div>
+`)}
+</div>
+</div>
+` : null}
 ` : null}
 ${v.hasOptions ? html`
 <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
@@ -355,10 +433,18 @@ ${v.showRows ? html`
 <div style="flex-grow: 1; min-height: 0; max-height: ${v.isBlindQ ? '34%' : 'none'}; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; padding: 2px">
 ${v.rows.map((row, rowI) => html`
 <div key=${rowI} style="display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-surface) 60%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: background .3s; ${row.style}">
-<div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column">
+${row.canBuzz ? html`
+<button type="button" onClick=${row.buzz} aria-label=${row.buzzLabel} style="all: unset; cursor: pointer; flex-grow: 1; min-width: 0; min-height: 44px; display: flex; flex-direction: column; justify-content: center">
+<span style="font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${row.name}</span>
+<span style="font-size: 12px; ${row.resultStyle}">${row.result}</span>
+</button>
+` : html`
+<div style="flex-grow: 1; min-width: 0; min-height: 44px; display: flex; flex-direction: column; justify-content: center">
 <span style="font-size: 16px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${row.name}</span>
 <span style="font-size: 12px; ${row.resultStyle}">${row.result}</span>
 </div>
+`}
+${row.hasBadge ? html`<span class="tag tag-accent" style="flex-shrink: 0; font-size: 14px; padding: 3px 10px">${row.badge}</span>` : null}
 <div style="display: flex; gap: 5px">
 ${row.buttons.map((b, bI) => html`
 <button key=${bI} class="btn" onClick=${b.pick} aria-pressed=${b.pressed} aria-label=${b.label} style="width: 44px; height: 44px; padding: 0; font-size: 17px; ${b.style}">${b.letter}</button>
@@ -372,13 +458,27 @@ ${row.buttons.map((b, bI) => html`
 <div style="display: flex; align-items: center; gap: 14px">
 <span style="font-size: 16px; color: var(--color-neutral-300)">${v.answeredLabel}</span>
 <span class="text-muted" style="font-size: 12px">Espace pour ${v.spaceAction}</span>
+${v.showFav ? html`
+<button class="btn btn-secondary" onClick=${v.toggleQFav} aria-pressed=${v.favPressed} style="height: 40px; padding: 0 14px; ${v.favStyle}">${v.favLabel}</button>
+` : null}
 </div>
+<div style="display: flex; gap: 10px">
+${v.blindReady ? html`
+<button class="btn btn-primary" onClick=${v.blindPlay} style="height: 54px; padding: 0 32px; font-size: 20px; gap: 10px; box-shadow: 0 0 24px color-mix(in srgb, var(--color-accent) 25%, transparent)"><svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M72 39.9v176.2a8 8 0 0 0 12.2 6.8l144-88.1a8 8 0 0 0 0-13.6l-144-88.1A8 8 0 0 0 72 39.9z"></path></svg>Play</button>
+` : null}
+${v.blindPlaying ? html`
+<button class="btn btn-primary" onClick=${v.blindStop} style="height: 54px; padding: 0 32px; font-size: 20px; gap: 10px"><svg width="18" height="18" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><rect x="48" y="48" width="160" height="160" rx="12"></rect></svg>Stop · vérifier</button>
+` : null}
+${v.blindStopped && v.blindCanResume ? html`
+<button class="btn btn-secondary" onClick=${v.blindPlay} style="height: 54px; padding: 0 24px; font-size: 18px">Reprendre l'écoute</button>
+` : null}
 ${v.notRevealed ? html`
 <button class="btn btn-primary" onClick=${v.reveal} style="height: 54px; padding: 0 32px; font-size: 20px">Lumière !</button>
 ` : null}
 ${v.revealed ? html`
 <button class="btn btn-primary" onClick=${v.next} style="height: 54px; padding: 0 32px; font-size: 20px; box-shadow: 0 0 24px color-mix(in srgb, var(--color-accent) 25%, transparent)">${v.nextLabel}</button>
 ` : null}
+</div>
 </div>
 </div>
 
@@ -395,7 +495,7 @@ ${v.scoreboard.map((s, sI) => html`
 <span style="width: 20px; font-size: 13px; color: var(--color-neutral-500); font-variant-numeric: tabular-nums">${s.rank}</span>
 <span style="flex-grow: 1; min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">${s.name}</span>
 ${s.gain ? html`
-<span style="font-size: 12px; font-weight: 500; color: oklch(0.86 0.1 155); animation: qpFloat .5s ease-out .6s both">+1</span>
+<span style="font-size: 12px; font-weight: 500; color: oklch(0.86 0.1 155); animation: qpFloat .5s ease-out .6s both">${s.gainLabel}</span>
 ` : null}
 <span style="font-size: 20px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 24px; text-align: right">${s.score}</span>
 </div>
@@ -427,7 +527,7 @@ ${v.restRanking.map((r, rI) => html`
 <span style="width: 24px; font-size: 15px; color: var(--color-neutral-400)">${r.rank}</span>
 <span style="flex-grow: 1; font-size: 16px">${r.name}</span>
 <span style="font-size: 13px; color: var(--color-neutral-400)">${r.pct} %</span>
-<span style="font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums">${r.score} <span style="color: var(--color-neutral-500); font-size: 13px">/ ${v.qTotal}</span></span>
+<span style="font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums">${r.score} <span style="color: var(--color-neutral-500); font-size: 13px">/ ${v.ptsTotal}</span></span>
 </div>
 `)}
 </div>

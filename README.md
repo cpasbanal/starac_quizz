@@ -9,8 +9,13 @@ It's a static site with no build step, server or database: plain HTML, CSS and J
 - **Navigation:** Quiz · N'oubliez pas les paroles · Blind test · Karaoké, with **Réglages** (questions: write, import, back up) on the right.
 - **Three game modes**, each with its own setup screen and questions:
   - **Quiz:** multiple-choice questions.
-  - **N'oubliez pas les paroles:** a lyric line with the missing words as `___`, and 2–6 possible endings.
-  - **Blind test:** a YouTube or Spotify clip plays with the video hidden; the host marks each player ✓ or ✗, then the answer and the video are revealed.
+  - **N'oubliez pas les paroles:** the start of a lyric line; players complete it. Four levels, chosen on the setup screen:
+    *Facile* (4 endings to choose from), *Moyen* (the last word is missing), *Difficile* (the last 3–4 words are missing), *Très difficile* (only the start of the line is shown).
+    The reveal shows the whole line, and the song can be added to the karaoké favorites.
+  - **Blind test:** a YouTube or Spotify clip plays with the title and video hidden. The clock starts at 0 when the host clicks **Play**.
+    Tapping a player's name when they buzz gives them the points of that moment: 4 (0–15 s), 3 (15–30 s), 2 (30–45 s), 1 (45–60 s).
+    **Stop · vérifier** pauses the clip; the host marks each buzz ✓ or ✗ (or resumes listening), then **Lumière !** reveals the song and counts the points.
+    Spotify plays full tracks only when the browser is logged in to Spotify; otherwise the embed plays a 30-second preview.
 - **Contestants:** add players or teams once. They're remembered, and you tap to include or skip them each game.
 - **Question bank:** write questions with 2–6 answers, an optional **category** and an optional **link**. Search, edit or delete them.
 - **Game setup:** choose a category (or All), how many questions (5 / 10 / 15 / 20 / All) and an optional timer (15s / 30s / 60s).
@@ -20,7 +25,7 @@ It's a static site with no build step, server or database: plain HTML, CSS and J
   - YouTube link: the video plays on the result.
   - Spotify link (track, album, playlist, episode): the Spotify player appears.
   - Any other link: a **Discover** button opens it.
-- **Karaoké:** a gallery of 81 karaoke videos with a search by artist or song title. Click a thumbnail to play it full-size in the app.
+- **Karaoké:** a gallery of karaoke videos with a search by artist or song title. Click a thumbnail to play it full-size in the app. The star adds a song to **Favoris**, alongside the songs starred during N'oubliez pas les paroles (a favorite without a YouTube link opens a YouTube karaoké search).
 - **Final screen:** a podium for the top 3, the full ranking, and a recap of every question showing how many players got it right.
 
 ## Adding questions
@@ -40,7 +45,7 @@ Open **Question bank**, then **Write a question**:
 ### Import from a spreadsheet (CSV / Google Sheets)
 Open **Question bank**, then **Import**, and paste cells straight from Google Sheets or upload a `.csv` file.
 
-Columns: `Question, A, B, C, D, Answer`, plus optional `Category`, `Link` and `Mode` columns. `Mode` is `Quiz`, `Paroles` or `Blind test` (empty means Quiz). A blind-test row needs only `Link` and `Answer` (title, artist).
+Columns: `Question, A, B, C, D, Answer`, plus optional `Category`, `Link`, `Mode` and `Chanson` columns. `Mode` is `Quiz`, `Paroles` or `Blind test` (empty means Quiz). A blind-test row needs only `Link` and `Answer` (title, artist). A paroles row: `Question` is the start of the line followed by `___`, `A` the ending to find, `B`–`D` optional wrong endings (for easy mode), `Chanson` the title and artist.
 
 - `Answer` can be a letter (`B`), a number (`2`) or the exact answer text.
 - 2 to 6 answer columns are allowed.
